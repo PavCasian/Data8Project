@@ -2,7 +2,7 @@ from files_to_dataframe import FileToDF
 import pandas as pd
 import numpy as np
 
-def namecon(df):
+def namecon(df):  # filters the names
     name_list = []
     for row in df.name:
         x = row.lower()
