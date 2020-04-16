@@ -45,30 +45,33 @@ class Trainer(Table):
         df = df.drop(['trainer'], axis=1)
         return df
 
-inst = Trainer()
-print(inst.get_trainer())
+# inst = Trainer()
+# print(inst.get_trainer())
 class StrengthWeakness(Table):
 
-    def __init__(self, type, TypeName, TypeID):
+    def __init__(self, from_column): # 'strengths' or 'weaknesses'
         super().__init__()
-        self.type = type
-        self.TypeName = TypeName
-        self.TypeID = TypeID
-        self.get_characteristic()
+        self.from_column = from_column
+        if self.from_column == 'strengths':
+            self.col_name = 'StrengthName'
+            self.col_id = 'StrengthID'
+        elif self.from_column == 'weaknesses':
+            self.col_name = 'WeaknessName'
+            self.col_id = 'WeaknessID'
+        # self.get_characteristic()
 
     def get_characteristic(self):
-        strength_list= self.extract(self.type)
+        strength_list= self.extract(self.from_column)
         df = pd.DataFrame(strength_list)
-        df.columns=[self.TypeName]
-        df[self.TypeID] = np.arange(len(df))
+        df.columns=[self.col_name]
+        df[self.col_id] = np.arange(len(df))
         return df
 
 
-    def extract(self, y):
-
-        df = file.dataframecsv()
+    def unlist_items(self):
+        df = self.extract('TransformedFiles', file_type='csv')
         list1 = []
-        for row in df[y]:
+        for row in df[self.from_column]:
             chars = ["'", "[", "]"]
             for c in chars:
                 row = row.replace(c, '')
@@ -79,8 +82,8 @@ class StrengthWeakness(Table):
                     list1.append(x)
         return list1
 
-# strength_instance = StrengthWeakness('strengths', 'StrengthName', 'WeaknessID')
-
+strength_instance = StrengthWeakness('strengths')
+print(strength_instance.unlist_items())
 
 # class Technology:
 #

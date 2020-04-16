@@ -78,8 +78,8 @@ class ExtractToDF:
 
 
 if __name__ == '__main__':
-    test_instance = ExtractToDF('SpartaDays')
+    test_instance = ExtractToDF('TransformedFiles')
     # print(test_instance.filenames())
-    test_csv = test_instance.from_txt()
+    test_csv = test_instance.from_csv()
     print(test_csv)
     # test_csv.to_csv('test_csv.csv')
