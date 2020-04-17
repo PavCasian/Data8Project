@@ -19,7 +19,7 @@ class ExtractToDF:
         for record in self.file_names_dict[self.folder]:
             s3object = self.s3_client.get_object(Bucket=self.bucket,
                                             Key=self.folder + '/' + record)
-            csv_string = s3object['Body'].read().decode('utf-8')
+            csv_string = s3object['Body'].read().decode('utf-8')  # utf-8 is a format
             df = pd.read_csv(StringIO(csv_string))  # read_csv wants a filepath or buffer(i.e. StringIO)
             df_list.append(df)
         main_df = pd.concat(df_list)
@@ -64,16 +64,16 @@ class ExtractToDF:
         return df
 
     def from_json(self):
-        df_list = []
+        dict_list = []
         for index, record in enumerate(self.file_names_dict[self.folder]):
             s3object = self.s3_client.get_object(Bucket=self.bucket,
                                             Key=self.folder + '/' + record)
             bson_dict_file = s3object['Body'].read().decode('utf-8')  # reads in binary
             json_dict_file = json.loads(bson_dict_file)
-            df_list.append(json_dict_file)
+            dict_list.append(json_dict_file)
             # if index % 100 == 0:
             #     print(f"JSON Reader Progress: {index / len(self.file_names_dict['Interview Notes']) * 100:.2f}%")
-        main_df = pd.DataFrame(df_list)
+        main_df = pd.DataFrame(dict_list)
         return main_df
 
 

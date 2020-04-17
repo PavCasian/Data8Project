@@ -1,20 +1,30 @@
 from files_to_dataframe import ExtractToDF
-from sklearn.preprocessing import LabelEncoder
 import pandas as pd
 import numpy as np
+import sys
+import ast
+import boto3 # delete later
+from FileDictionary import files
 
 
 class Table:
 
-    def extract(self, folder, file_type=None):
+    def extract(self, folder, file_type='csv'):
         extraction_instance = ExtractToDF(folder)
-        if file_type == 'csv':
-            df = extraction_instance.from_csv()
-        elif file_type == 'txt':
-            df = extraction_instance.from_txt()
-        elif file_type == 'json':
-            df = extraction_instance.from_txt()
-        return df
+        try: # in case the specified file_type is incorrect
+            if file_type == 'csv':
+                df = extraction_instance.from_csv()
+            elif file_type == 'txt':
+                df = extraction_instance.from_txt()
+            elif file_type == 'json':
+                df = extraction_instance.from_txt()
+            return df
+        except ValueError:
+            print('The file_type parameter does not match the type of the file')
+            sys.exit(1)  # will stop the program if exception raised
+
+    # def add_id_df(self):
+    #     np.arange(len(df))
 
     def load(self):
         pass
@@ -30,9 +40,7 @@ class Trainer(Table):
         df = self.extract('Academy', file_type='csv')
         df = df[['trainer']]
         df = df.drop_duplicates()
-        name_le = LabelEncoder()
-        df['TrainerID'] = name_le.fit_transform(df['trainer'])
-        df['TrainerID'] += 1
+        df['TrainerID'] = np.arange(len(df))
         return df
 
     # fixme: combine them later id get trainer is not called anywhere else
@@ -47,9 +55,9 @@ class Trainer(Table):
 
 # inst = Trainer()
 # print(inst.get_trainer())
-class StrengthWeakness(Table):
+class StrengthWeaknessTechnology(Table):
 
-    def __init__(self, from_column): # 'strengths' or 'weaknesses'
+    def __init__(self, from_column): # 'strengths', 'weaknesses' or 'technologies'
         super().__init__()
         self.from_column = from_column
         if self.from_column == 'strengths':
@@ -58,120 +66,109 @@ class StrengthWeakness(Table):
         elif self.from_column == 'weaknesses':
             self.col_name = 'WeaknessName'
             self.col_id = 'WeaknessID'
-        # self.get_characteristic()
+        elif self.from_column == 'technologies':
+            self.col_name = 'TechName'
+            self.col_id = 'TechID'
 
-    def get_characteristic(self):
-        strength_list= self.extract(self.from_column)
-        df = pd.DataFrame(strength_list)
+    def get_items_df(self):  # pull all characteristic from_column in a df
+        items_list= self.get_items_list()
+        df = pd.DataFrame(items_list)
         df.columns=[self.col_name]
-        df[self.col_id] = np.arange(len(df))
+        df[self.col_id] = np.arange(len(df))  # adding ids to each characteristic
         return df
 
 
-    def unlist_items(self):
+    def get_items_list(self):  # unique items list of strengths/weaknesses
         df = self.extract('TransformedFiles', file_type='csv')
-        list1 = []
-        for row in df[self.from_column]:
-            chars = ["'", "[", "]"]
-            for c in chars:
-                row = row.replace(c, '')
-            row = row.split(',')
-            for x in row:
-                x = x.strip()
-                if x not in list1:
-                    list1.append(x)
-        return list1
+        unique_item_list = []
+        for row in df[self.from_column].iteritems():  # each cand has a list of strengths/weaknesses
+            items_list = ast.literal_eval(row[1])  # 0 is index and 1 is a string list of items;
+            # literal_eval removes the string quotes of the list
+            for item in items_list:  # there are multiple items in a list
+                if self.from_column == 'technologies': # the column includes a list of dicts
+                    item = item['language']  # only the programming language wanted
+                if item not in unique_item_list:
+                    unique_item_list.append(item)
+        return unique_item_list
 
-strength_instance = StrengthWeakness('strengths')
-print(strength_instance.unlist_items())
 
-# class Technology:
-#
-#     def __init__(self):
-#
-#         self.get_tech()
-#
-#     def get_tech(self):
-#         file = ReadTransformJson('data8-engineering-project', 'Interview Notes')
-#         df = file.json_reader('Interview Notes') # uses json reader so can access technologies as a dictionary but will take longer to run
-#         tech_list = []
-#         for row in df.technologies:
-#             for tech in row:
-#                 tech = tech['language']
-#                 if tech not in tech_list:
-#                     tech_list.append(tech)
-#         df = pd.DataFrame(tech_list)
-#         df.columns=['TechName']
-#         df['TechID'] = np.arange(len(df))
-#         return df
-#
-#
-# class Academy:
-#
-#     def __init__(self):
-#         self.get_academy()
-#
-#     def get_academy(self):
-#         file= FileToDF('data8-engineering-project', 'SpartaDays')
-#         df = file.dataframetxt()
-#         df = df[['academy']]
-#         academy_le = LabelEncoder()
-#         df['AcademyID'] = academy_le.fit_transform(df['academy'])
-#         df = df.drop_duplicates()
-#         df['AcademyID'] += 1
-#         return df
-#
-#
-# class Course:
-#
-#     def __init__(self):
-#
-#         pass
-#
-#     def dataframe(bucket, folder):
-#         s3_client = boto3.client('s3')
-#         contents = s3_client.list_objects_v2(Bucket=bucket, Prefix=f'{folder}/')['Contents']
-#         df_list = []
-#         for x in contents:
-#             splitkey = x['Key'].split('.')
-#             if splitkey[-1] == 'csv':
-#                 data = s3_client.get_object(Bucket='data8-engineering-project',
-#                                             Key=x['Key'])
-#                 df1 = pd.read_csv(data['Body'])
-#                 name = x['Key'].split('/')[1]  ####finds the name of the file
-#                 course_type = name.split('_')[
-#                     0]  ##splits the file up and takes the first part of it i.e. 'business', 'data'
-#                 course_initial = course_type[0]
-#                 course_number = name.split('_')[1]  ####takes the second entry, i.e. a number
-#                 conc = course_initial + course_number  ####concatenates the course type and the number of which group it is
-#                 course_start = name.split('_')[
-#                     2]  # takes the 'date' from the file name but it still has .csv on the end
-#                 start_date = course_start.split('.')[0]  # removes the .csv from the date
-#                 column_names = list(df1.columns.values)  # gets the names of all the columns
-#                 final_name = column_names[-1]  # gets the name of the last column for this particular table
-#                 if len(
-#                         final_name) < 6:  ## the length of the name varies depending on whether its an 8 or 10 week course
-#                     course_length = final_name[-1]  ##  this is for the 8 week courses
-#                 else:
-#                     course_length = final_name[-2] + final_name[-1]  ## this is for the 10 week courses
-#                 df1[
-#                     'CourseID'] = conc  # creates an extra column in the dataframe called course that contains the concatenated course name
-#                 df1['Course Type'] = course_type
-#                 df1['Course Number'] = course_number
-#                 df1['Start_Date'] = start_date  # creates an extra column that contains the date
-#                 df1['Course_Length'] = course_length  # makes an extra column that will have the course length
-#                 df2 = df1[['CourseID', 'Course Type', 'Start_Date', 'Course_Length', 'trainer', 'Course Number']].iloc[
-#                       :1]
-#                 df_list.append(
-#                     df2)  ## adds data frame to a list of dataframes to all be returned at once when all files have been iterated through
-#             else:
-#                 pass
-#         df = pd.concat(df_list)
-#         return df
-#
-#     def dateformat(
-#             col):  # takes in the bucket and folder and creates df using above function & formats column specified to date
-#         df = dataframe('data8-engineering-project', 'Academy')
-#         df[col] = pd.to_datetime(df[col])
-#         return df
+# strength_instance = StrengthWeaknessTechnology('technologies')
+# print(strength_instance.get_items_df())
 
+
+class Academy(Table):
+
+    def __init__(self):
+        super().__init__()
+
+    def get_academy(self):
+        df = self.extract('SpartaDays', file_type='txt')
+        df = df[['academy']]
+        df = df.drop_duplicates()
+        df['AcademyID'] = np.arange(len(df))
+        return df
+
+# test_inst = Academy()
+# print(test_inst.get_academy())
+
+class Course(Table):
+
+    def __init__(self):
+        super().__init__()
+
+
+    def dataframe(self, bucket, folder):
+        s3_client = boto3.client('s3')
+        # contents = s3_client.list_objects_v2(Bucket=bucket, Prefix=f'{folder}/')['Contents']
+        contents = files(bucket, folder)
+        # print(contents)
+        df_list = []
+        for file_name in contents[folder]:  # file_name ex 'Business_25_2019-03-04.csv'
+
+                data = s3_client.get_object(Bucket='data8-engineering-project',
+                                            Key=folder + '/' + file_name)
+                single_file_df = pd.read_csv(data['Body'])
+                splitted_file_name = file_name.split('_')  # ['Business', '25', '2019-03-04.csv']
+                course_type = splitted_file_name[0]
+                course_initial = course_type[0]
+                course_number = splitted_file_name[1]
+                course_id = course_initial + course_number
+                start_date = splitted_file_name[2].split('.')[0]  # removes .csv on the end
+                column_names = list(single_file_df.columns.values)  # gets the names of all the columns
+                last_column = column_names[-1]  # gets the name of the last column for this particular table
+                if len(
+                        last_column) < 6:  ## the length of the name varies depending on whether its an 8 or 10 week course
+                    course_length = last_column[-1]  ##  this is for the 8 week courses
+                else:
+                    course_length = last_column[-2:] ## this is for the 10 week courses
+                single_file_df[
+                    'CourseID'] = course_id  # creates an extra column in the dataframe called course that contains the concatenated course name
+                single_file_df['Course Type'] = course_type
+                single_file_df['Course Number'] = course_number
+                single_file_df['Start_Date'] = start_date  # creates an extra column that contains the date
+                single_file_df['Course_Length'] = course_length  # makes an extra column that will have the course length
+                df2 = single_file_df[['CourseID', 'Course Type', 'Start_Date',
+                                      'Course_Length', 'trainer', 'Course Number']].iloc[:1]
+                df_list.append(
+                    df2)  ## adds data frame to a list of dataframes to all be returned at once when all files have been iterated through
+        df = pd.concat(df_list)
+        return df
+
+    def dateformat(self,
+            col):  # takes in the bucket and folder and creates df using above function & formats column specified to date
+        df = self.dataframe('data8-engineering-project', 'Academy')
+        df[col] = pd.to_datetime(df[col])
+        return df
+
+# ins = Course()
+# print(ins.dateformat('Start_Date'))
+
+
+# import re
+# either this
+# str1 = 'multiple 10'
+# print(re.findall('\d+', str1 ))
+# or this
+# print(int(filter(str.isdigit, str1)))
+# for i in filter(str.isnumeric, str1):
+#     print(i)

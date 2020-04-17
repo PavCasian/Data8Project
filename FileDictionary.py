@@ -8,15 +8,12 @@ def files(bucket, *folders):
     for x in contents:
         folder = x.key.split('/')[0]
         file = x.key.split('/')[1]
-        if file == ' ':
+        if file == '':  # don't include empty files (e.g. '../bucket_folder/')
             continue
-        if folder not in folders:
-            pass
         elif folder in filenames:
             filenames[folder].append(file)
         else:
             filenames[folder]=[file]
-
     return filenames
 
 
