@@ -5,6 +5,7 @@ import sys
 import ast
 import boto3 # delete later
 from FileDictionary import files
+from datetime import datetime
 
 
 class Table:
@@ -114,61 +115,53 @@ class Academy(Table):
 class Course(Table):
 
     def __init__(self):
+        self.folder = 'Academy'
         super().__init__()
 
-
-    def dataframe(self, bucket, folder):
+    def get_course_details(self):
         s3_client = boto3.client('s3')
-        # contents = s3_client.list_objects_v2(Bucket=bucket, Prefix=f'{folder}/')['Contents']
-        contents = files(bucket, folder)
-        # print(contents)
-        df_list = []
-        for file_name in contents[folder]:  # file_name ex 'Business_25_2019-03-04.csv'
+        file_names = files('data8-engineering-project', self.folder)
+        courses_list = []
+        spartans_list = []
+        for file_name in file_names[self.folder]:  # file_name ex 'Business_25_2019-03-04.csv'
+            file_name_split = file_name.split('_')  # ['Business', '25', '2019-03-04.csv']
+            course_type = file_name_split[0]
+            course_initial = course_type[0]
+            course_number = file_name_split[1]
+            course_id = course_initial + course_number
+            start_date = file_name_split[2].split('.')[0]  # removes .csv at the end
+            # we need the trainer's name and the length of course from inside file
+            start_date = datetime.strptime(start_date, '%Y-%m-%d')
+            data = s3_client.get_object(Bucket='data8-engineering-project',
+                                        Key=self.folder + '/' + file_name)
+            cohort_performance_df = pd.read_csv(data['Body'])
+            trainer_name = cohort_performance_df.at[0, 'trainer']
+            column_names = list(cohort_performance_df.columns.values)  # gets the names of all the columns
+            last_column = column_names[-1]  # gets the name of the last column for this particular table
+            if len(last_column) < 6:  # the length of the name varies depending on whether its 8 or 10 week course
+                course_length = last_column[-1]  #  this is for the 8 week courses
+            else:
+                course_length = last_column[-2:] # this is for the 10 week courses
+            course_details = (course_id, course_type, course_number, start_date, course_length, trainer_name)
+            courses_list.append(course_details)
+            # we also want the courseID and the spartan's name
+            spartans_group = cohort_performance_df[['name']]
+            spartans_group = spartans_group.assign(CourseId = course_id) # creates column CourseId and assigns value
+            spartans_list.append(spartans_group)
+        courses_df = pd.DataFrame(courses_list, columns=['CourseID', 'Course_Type', 'Course_Number', 'Start_Date',
+                                                         'Course_Length', 'Trainer'])
+        spartans_df = pd.concat(spartans_list)
+        return courses_df, spartans_df
 
-                data = s3_client.get_object(Bucket='data8-engineering-project',
-                                            Key=folder + '/' + file_name)
-                single_file_df = pd.read_csv(data['Body'])
-                splitted_file_name = file_name.split('_')  # ['Business', '25', '2019-03-04.csv']
-                course_type = splitted_file_name[0]
-                course_initial = course_type[0]
-                course_number = splitted_file_name[1]
-                course_id = course_initial + course_number
-                start_date = splitted_file_name[2].split('.')[0]  # removes .csv on the end
-                column_names = list(single_file_df.columns.values)  # gets the names of all the columns
-                last_column = column_names[-1]  # gets the name of the last column for this particular table
-                if len(
-                        last_column) < 6:  ## the length of the name varies depending on whether its an 8 or 10 week course
-                    course_length = last_column[-1]  ##  this is for the 8 week courses
-                else:
-                    course_length = last_column[-2:] ## this is for the 10 week courses
-                single_file_df[
-                    'CourseID'] = course_id  # creates an extra column in the dataframe called course that contains the concatenated course name
-                single_file_df['Course Type'] = course_type
-                single_file_df['Course Number'] = course_number
-                single_file_df['Start_Date'] = start_date  # creates an extra column that contains the date
-                single_file_df['Course_Length'] = course_length  # makes an extra column that will have the course length
-                df2 = single_file_df[['CourseID', 'Course Type', 'Start_Date',
-                                      'Course_Length', 'trainer', 'Course Number']].iloc[:1]
-                df_list.append(
-                    df2)  ## adds data frame to a list of dataframes to all be returned at once when all files have been iterated through
-        df = pd.concat(df_list)
-        return df
-
-    def dateformat(self,
-            col):  # takes in the bucket and folder and creates df using above function & formats column specified to date
-        df = self.dataframe('data8-engineering-project', 'Academy')
-        df[col] = pd.to_datetime(df[col])
-        return df
-
-# ins = Course()
-# print(ins.dateformat('Start_Date'))
+    # def create_spartan_table(self, df, c_id):
+    #     # take the spartan name from the df and append to each the courseID
+    #     # our spartan table ID will use the candidate's ID, the mapping between them will be made using course_type and name
+    #
+    #
+    #
+    # def create_course_table(self):
 
 
-# import re
-# either this
-# str1 = 'multiple 10'
-# print(re.findall('\d+', str1 ))
-# or this
-# print(int(filter(str.isdigit, str1)))
-# for i in filter(str.isnumeric, str1):
-#     print(i)
+ins = Course()
+df = ins.get_course_details()
+print(df)
