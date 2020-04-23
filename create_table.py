@@ -312,16 +312,12 @@ class Assessment(Candidate):
         assess_df = self.extract('TransformedFiles')
         assess_df.drop_duplicates(inplace=True)
         assess_df = pd.merge(assess_df, candidate_df, how='left', on='name')
-
-
         sparta_day_df = self.extract('SpartaDays', file_type='txt')
+        sparta_day_df['name'] = sparta_day_df['name'].str.strip()
         sparta_day_df.drop_duplicates(inplace=True)
-        sparta_day_df = pd.merge(sparta_day_df, candidate_df, how='left', on='name')
-
-        assess_df = pd.merge(assess_df[['CandidateID', 'geo_flex', 'self_development', 'financial_support_self','result', 'course_interest']],
-                             sparta_day_df[['CandidateID', 'academy', 'psychometrics', 'presentation','date']], on='CandidateID')
-        assess_df.to_csv('assessment.csv')
-        print(assess_df)
+        assess_df = pd.merge(assess_df[['name', 'CandidateID', 'geo_flex', 'self_development', 'financial_support_self','result', 'course_interest']],
+                             sparta_day_df[['name', 'academy', 'psychometrics', 'presentation','date']], on='name')
+        return assess_df
 
 
 Assessment().prepare_assessment_table()
