@@ -45,18 +45,18 @@ class ExtractToDF:
             academy = dateacdf.iloc[1][0]  # gets the academy name (second row of dataframe created)
             academy = academy.split(' ')[0]  # gets just the location name (takes out the word academy)
             df1['date'] = date
-            df1['academy'] = academy
+            df1['academy_name'] = academy
             splitdf = df1[0].str.rsplit("-", 1,
                                         expand=True)  # splits full name from everything else (splits on last - so '-' in names don't affect it)
             # expand into different columns
             scoredf = splitdf[1].str.split("/|:|,",
                                            expand=True)  # splits all the stats up score, max.score, name of assessment
-            fulldf = pd.concat([splitdf[0], scoredf, df1['academy'], df1['date']],
+            fulldf = pd.concat([splitdf[0], scoredf, df1['academy_name'], df1['date']],
                                axis=1)  # concatenates all the formatted created above so all columns are correct
             df_list.append(fulldf)  # adds the dataframe for this file to a list
         df = pd.concat(df_list)  # creates one dataframe for all the files that have been processed above
         df.columns = ["name", 'col1', 'psychometrics', 'psycho.max', 'col2', 'presentation', 'present.max',
-                      'academy', 'date']
+                      'academy_name', 'date']
         df.drop(['col1', 'col2'], axis=1, inplace=True)
         df[['psychometrics', 'psycho.max', 'presentation', 'present.max']] = df[
             ['psychometrics', 'psycho.max', 'presentation',

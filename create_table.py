@@ -7,9 +7,19 @@ import boto3 # delete later
 from FileDictionary import files
 from datetime import datetime
 from split_name_auto import split_full_name
+import distance
+from sqlalchemy import create_engine
+import urllib
 
 
 class Table:
+
+    params = urllib.parse.quote_plus("DRIVER={SQL Server Native Client 11.0};"
+                                     "SERVER=localhost,1433;"
+                                     "DATABASE=SpartaDB;"
+                                     "UID=SA;"
+                                     "PWD=Passw0rd2018")
+    engine = create_engine("mssql+pyodbc:///?odbc_connect={}".format(params))
 
     def extract(self, folder, file_type='csv'):
         extraction_instance = ExtractToDF(folder)
@@ -28,8 +38,11 @@ class Table:
     def add_ids_df(self, df, column_name):
         return df.assign(**{column_name: np.arange(1, len(df) + 1)})
 
-    def load(self):
-        pass
+    def load(self, df, sql_table):
+        """Note that the columns in the dataframe need to match the column names
+        and order in the sql table"""
+        df.to_sql(sql_table, con=Table.engine, if_exists='append', index=False)
+
 
 class Trainer(Table):
 
@@ -66,13 +79,16 @@ class Academy(Table):
 
     def get_academy(self):
         df = self.extract('SpartaDays', file_type='txt')
-        df = df[['academy']]
+        df = df[['academy_name']]
         df = df.drop_duplicates()
-        df['AcademyID'] = np.arange(1, len(df) + 1)
-        return df
+        df['academy_ID'] = np.arange(1, len(df) + 1)
+        return df[['academy_ID', 'academy_name']]
 
-# test_inst = Academy()
-# print(test_inst.get_academy())
+    def export(self):
+        self.load(self.get_academy(), 'Academies')
+
+test_inst = Academy()
+test_inst.export()
 
 class Course(Table):
 
@@ -127,8 +143,6 @@ class Course(Table):
 # print(df[1].info())
 
 
-
-import distance
 class Typo:
 
     def __init__(self, name_series):
@@ -373,5 +387,5 @@ class AcademyCompetency(Spartan):
         return comp_table.drop(columns=['CourseId', 'name'])
 
 
-ins = AcademyCompetency()
-print(ins.create_competency_table('IS'))
+# ins = AcademyCompetency()
+# print(ins.create_competency_table('IS'))
