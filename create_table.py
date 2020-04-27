@@ -25,8 +25,8 @@ class Table:
             print('The file_type parameter does not match the type of the file')
             sys.exit(1)  # will stop the program if exception raised
 
-    # def add_id_df(self):
-    #     np.arange(len(df))
+    def add_ids_df(self, df, column_name):
+        return df.assign(**{column_name: np.arange(1, len(df) + 1)})
 
     def load(self):
         pass
@@ -57,45 +57,6 @@ class Trainer(Table):
 
 # inst = Trainer()
 # print(inst.get_trainer())
-class StrengthWeaknessTechnology(Table):
-
-    def __init__(self, from_column): # 'strengths', 'weaknesses' or 'technologies'
-        super().__init__()
-        self.from_column = from_column
-        if self.from_column == 'strengths':
-            self.col_name = 'StrengthName'
-            self.col_id = 'StrengthID'
-        elif self.from_column == 'weaknesses':
-            self.col_name = 'WeaknessName'
-            self.col_id = 'WeaknessID'
-        elif self.from_column == 'technologies':
-            self.col_name = 'TechName'
-            self.col_id = 'TechID'
-
-    def get_items_df(self):  # pull all characteristic from_column in a df
-        items_list= self.get_items_list()
-        df = pd.DataFrame(items_list)
-        df.columns=[self.col_name]
-        df[self.col_id] = np.arange(len(df))  # adding ids to each characteristic
-        return df
-
-
-    def get_items_list(self):  # unique items list of strengths/weaknesses
-        df = self.extract('TransformedFiles', file_type='csv')
-        unique_item_list = []
-        for row in df[self.from_column].iteritems():  # each cand has a list of strengths/weaknesses
-            items_list = ast.literal_eval(row[1])  # 0 is index and 1 is a string list of items;
-            # literal_eval removes the string quotes of the list
-            for item in items_list:  # there are multiple items in a list
-                if self.from_column == 'technologies': # the column includes a list of dicts
-                    item = item['language']  # only the programming language wanted
-                if item not in unique_item_list:
-                    unique_item_list.append(item)
-        return unique_item_list
-
-
-# strength_instance = StrengthWeaknessTechnology('technologies')
-# print(strength_instance.get_items_df())
 
 
 class Academy(Table):
@@ -137,6 +98,7 @@ class Course(Table):
                                         Key=self.folder + '/' + file_name)
             cohort_performance_df = pd.read_csv(data['Body'])
             trainer_name = cohort_performance_df.at[0, 'trainer']
+
             column_names = list(cohort_performance_df.columns.values)  # gets the names of all the columns
             last_column = column_names[-1]  # gets the name of the last column for this particular table
             if len(last_column) < 6:  # the length of the name varies depending on whether its 8 or 10 week course
@@ -152,12 +114,17 @@ class Course(Table):
         courses_df = pd.DataFrame(courses_list, columns=['CourseID', 'Course_Type', 'Course_Number', 'Start_Date',
                                                          'Course_Length', 'Trainer'])
         spartans_df = pd.concat(spartans_list)
-        return courses_df, spartans_df
+        return courses_df, spartans_df  # first returns [CourseID Course_Type Course_Number Start_Date
+                                        # Course_Length Trainer];
+                                        # second returns [name CourseId]
 
 
 # ins = Course()
 # df = ins.get_course_details()
-# print(df[1])
+# print(df[0].head(10))
+# print(df[0].info())
+# print(df[1].head(10))
+# print(df[1].info())
 
 
 
@@ -199,8 +166,6 @@ class Typo:
         return self.name_series
 
 
-
-
 # tst = Table()
 # df = tst.extract('Talent')
 # typo_ins = Typo(df['invited_by'])
@@ -232,13 +197,6 @@ class Recruiter(Table):
 # print(ins)
 
 
-
-# from link_files import talentfile
-# from link_files import merge
-# from Talent_Team import talentteammatcher
-# from link_files import namecon
-
-
 class Candidate(Table):
 
     def __init__(self):
@@ -263,8 +221,8 @@ class Candidate(Table):
         df = self.phonenoformat(df, 'phone_number')
         df = self.dateformat(df, 'dob')
         df.drop(['id'], axis = 1, inplace=True)  # in each file in 'Talent' indexing starts from 0
-        df['CandidateID'] = np.arange(1, len(df) + 1)
         df.drop_duplicates(inplace=True)
+        df['CandidateID'] = np.arange(1, len(df) + 1)
         df = df.fillna(0)
         # cc = namecon(coursecand())
         # cc = cc.drop(['name'], axis=1)
@@ -275,12 +233,17 @@ class Candidate(Table):
         df = self.prepare_candidate_table()
         recruiter_table = Recruiter().prepare_recruiter_table()
         df = pd.merge(df, recruiter_table, how='left', on='invited_by')
-        # print(df.head())
         df1 = split_full_name(df['name'])
         df =  pd.concat([df, df1], axis=1)
         df = df.drop(['id', 'invited_by', 'invited_date', 'month', 'name'], axis=1)
         # df = df.fillna(0)
         return df
+
+    def add_candidate_id(self, with_df):
+        candidate_df = self.prepare_candidate_table()[['CandidateID', 'name']]
+        merged_df = pd.merge(with_df, candidate_df, how='left', on='name')
+        return merged_df
+
 
 # df = Candidate().candidates_table()
 # print(df.info())
@@ -290,13 +253,17 @@ class Spartan(Course, Candidate):
     def __init__(self):
         super().__init__()
 
-    def create_spartan_table(self):
+
+    def add_spartan_ids(self):
         spartan_df = self.get_course_details()[1]
         # we need the candidate id to replace spartan name, for this we merge with cand table on name
         candidate_df = self.prepare_candidate_table()[['CandidateID', 'name']]
-        df = pd.merge(spartan_df, candidate_df, how='left', on='name')
-        df.drop(['name'], axis=1, inplace=True)
-        print(df)
+        spartan_df = pd.merge(spartan_df, candidate_df, how='left', on='name')
+        return spartan_df
+
+    def create_spartan_table(self):
+        spartan_df = self.add_spartan_ids()
+        return spartan_df.drop(['name'], axis=1, inplace=True)
 
 
 # ins = Spartan()
@@ -320,4 +287,91 @@ class Assessment(Candidate):
         return assess_df
 
 
-Assessment().prepare_assessment_table()
+
+class StrengthWeaknessTechnology(Candidate):
+
+    def __init__(self, from_column): # 'strengths', 'weaknesses' or 'technologies'
+        super().__init__()
+        self.from_column = from_column
+        self.assess_df = self.extract('TransformedFiles', file_type='csv')
+        self.unpacked_df = pd.DataFrame()
+        if self.from_column == 'strengths':
+            self.col_name = 'StrengthName'
+            self.col_id = 'StrengthID'
+        elif self.from_column == 'weaknesses':
+            self.col_name = 'WeaknessName'
+            self.col_id = 'WeaknessID'
+        elif self.from_column == 'technologies':
+            self.col_name = 'TechName'
+            self.col_id = 'TechID'
+
+    def create_characteristic_table(self):  # pull all characteristic from_column in a df
+        self.unpack_characteristic()  # need to unpack first and then able to work with them
+        characteristic_df = self.unpacked_df[[self.from_column]]
+        characteristic_df = characteristic_df.drop_duplicates()  # returns a series of unique values
+        characteristic_df.rename(columns={self.from_column: self.col_name}, inplace=True)
+        characteristic_df = self.add_ids_df(characteristic_df, self.col_id)
+        return characteristic_df
+
+    def unpack_characteristic(self):
+        # each candidate has str list for strengths/weaknesses e.g. '['Intolerant', 'Impulsive']' and list of dicts for
+        # for technologies [{'language': 'PHP', 'self_score': 4}, {'language': 'Python', 'self_score': 4}]
+        # literal_eval removes the string quotes of the list
+        self.assess_df[self.from_column] = self.assess_df[self.from_column].apply(ast.literal_eval)
+        assess_df_ids = self.add_candidate_id(self.assess_df)
+        # take each column in df, except from_column, and repeat each row based on the number of list items in the
+        # from_column row; to this assign the corresponding from_column values which were flatten (into a single list)
+        self.unpacked_df = pd.DataFrame({col: np.repeat(assess_df_ids[col].values,
+                                                        assess_df_ids[self.from_column].str.len())
+                               for col in assess_df_ids.columns.drop(self.from_column)}
+                              ).assign(**{self.from_column: np.concatenate(assess_df_ids[self.from_column].values)})
+        # now for technologies, each row contains one dict, we need to split each dictionary into 2 columns
+        # (e.g. 'language' and 'self-score')
+        if self.from_column == 'technologies':
+            self.unpacked_df = pd.concat([self.unpacked_df.drop(['technologies'], axis=1),
+                                     self.unpacked_df['technologies'].apply(pd.Series)], axis=1)
+            self.from_column = 'language'  # for use in create_characteristic table as 'technologies' is not valid more
+
+
+    def create_characteristic_candidate_table(self):
+        charact_df = self.create_characteristic_table()
+        charact_candidate_df = pd.merge(self.unpacked_df, charact_df, how='left', left_on=self.from_column,
+                                        right_on=self.col_name)
+        return charact_candidate_df
+
+import re
+class AcademyCompetency(Spartan):
+
+    """ A class that will create a table for one of the following competencies:
+    IH = Intellectual Horsepower
+    IS = Interpersonal Savvy
+    PV = Perseverance
+    PS = Problem Solving
+    SD = Self Development
+    SA = Standing Alone
+    It will return a pandas dataframe containing the spartans_id and their performance on one of the above for each
+    week in the course.
+    """
+
+    def __init__(self):
+        super().__init__()
+
+
+    def extract_competency(self, competency):
+        extracted_df = self.extract('Academy')
+        # iterate through each column's name if does not start with competencies initials, or it's not 'name'column,
+        # then add to redundant_list
+        redundant_col_list = [column for column in extracted_df.columns
+                   if column != 'name' and not bool(re.match(competency, column))]
+        comp_df = extracted_df.drop(redundant_col_list, axis=1)
+        return comp_df
+
+    def create_competency_table(self, competency):
+        comp_df = self.extract_competency(competency)
+        spartan_df = self.add_spartan_ids()  # returns a df consisting of name, courseId and spartan_id
+        comp_table = pd.merge(comp_df, spartan_df, how='left', on='name')
+        return comp_table.drop(columns=['CourseId', 'name'])
+
+
+ins = AcademyCompetency()
+print(ins.create_competency_table('IS'))

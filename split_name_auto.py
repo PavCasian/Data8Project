@@ -43,7 +43,7 @@ def split_full_name(name_series):  # takes in the name column of a dataframe
 if __name__ == '__main__':
     extraction_instance = ExtractToDF('Talent')
     df = extraction_instance.from_csv()
-    print(splitname(df['name']))
+    print(split_full_name(df['name']))
 
 
 
