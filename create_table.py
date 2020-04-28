@@ -21,6 +21,12 @@ class Table:
                                      "PWD=Passw0rd2018")
     engine = create_engine("mssql+pyodbc:///?odbc_connect={}".format(params))
 
+    # def __init__(self):
+        # self.talent_data = self.extract('Talent')
+        # self.interview_data = self.extract('Interview Notes', file_type='json')
+        # self.sparta_day_data = self.extract('SpartaDays', file_type='txt')
+        # self.academy_data = self.extract('Academy')
+
     def extract(self, folder, file_type='csv'):
         extraction_instance = ExtractToDF(folder)
         try: # in case the specified file_type is incorrect
@@ -35,41 +41,42 @@ class Table:
             print('The file_type parameter does not match the type of the file')
             sys.exit(1)  # will stop the program if exception raised
 
-    def add_ids_df(self, df, column_name):
+    def add_ids_col(self, df, column_name):
         return df.assign(**{column_name: np.arange(1, len(df) + 1)})
 
-    def load(self, df, sql_table):
+    def load(self, df, sql_table_name):
         """Note that the columns in the dataframe need to match the column names
-        and order in the sql table"""
-        df.to_sql(sql_table, con=Table.engine, if_exists='append', index=False)
+        and order of those in the sql table"""
+        df.to_sql(sql_table_name, con=Table.engine, if_exists='append', index=False)
 
 
 class Trainer(Table):
 
     def __init__(self):
         super().__init__()
-        # self.trainerstable()
-
 
     def get_trainer(self): # for matching IDs with
         df = self.extract('Academy', file_type='csv')
         df = df[['trainer']]
         df = df.drop_duplicates()
-        df['TrainerID'] = np.arange(len(df))
+        df = self.add_ids_col(df, 'trainer_ID')
         return df
 
     # fixme: combine them later id get trainer is not called anywhere else
 
-    def trainerstable(self): # finalised table for sql
+    def create_trainer_table(self): # finalised table for sql
         df = self.get_trainer()
         first_last_names = df['trainer'].str.split(" ", 1, expand=True)
-        first_last_names.columns =['first_name','last_name']
+        first_last_names.columns = ['first_name', 'last_name']
         df = pd.concat([df, first_last_names], axis=1)
         df = df.drop(['trainer'], axis=1)
         return df
 
+    def export(self):
+        self.load(self.create_trainer_table(), 'Trainers')
+
 # inst = Trainer()
-# print(inst.get_trainer())
+# print(inst.export())
 
 
 class Academy(Table):
@@ -81,19 +88,20 @@ class Academy(Table):
         df = self.extract('SpartaDays', file_type='txt')
         df = df[['academy_name']]
         df = df.drop_duplicates()
-        df['academy_ID'] = np.arange(1, len(df) + 1)
+        df = self.add_ids_col(df, 'academy_ID')
         return df[['academy_ID', 'academy_name']]
 
     def export(self):
         self.load(self.get_academy(), 'Academies')
 
-test_inst = Academy()
-test_inst.export()
+# test_inst = Academy()
+# test_inst.export()
 
 class Course(Table):
 
     def __init__(self):
         self.folder = 'Academy'
+        self.courses_df, self.spartans_df = self.get_course_details()
         super().__init__()
 
     def get_course_details(self):
@@ -103,8 +111,8 @@ class Course(Table):
         spartans_list = []
         for file_name in file_names[self.folder]:  # file_name ex 'Business_25_2019-03-04.csv'
             file_name_split = file_name.split('_')  # ['Business', '25', '2019-03-04.csv']
-            course_type = file_name_split[0]
-            course_initial = course_type[0]
+            course_name = file_name_split[0]
+            course_initial = course_name[0]
             course_number = file_name_split[1]
             course_id = course_initial + course_number
             start_date = file_name_split[2].split('.')[0]  # removes .csv at the end
@@ -121,21 +129,53 @@ class Course(Table):
                 course_length = last_column[-1]  #  this is for the 8 week courses
             else:
                 course_length = last_column[-2:] # this is for the 10 week courses
-            course_details = (course_id, course_type, course_number, start_date, course_length, trainer_name)
+            course_details = (course_id, course_name, course_number, course_length, start_date, trainer_name)
             courses_list.append(course_details)
             # we also want the courseID and the spartan's name
             spartans_group = cohort_performance_df[['name']]
-            spartans_group = spartans_group.assign(CourseId = course_id) # creates column CourseId and assigns value
+            spartans_group = spartans_group.assign(CourseId=course_id) # creates column CourseId and assigns value
             spartans_list.append(spartans_group)
-        courses_df = pd.DataFrame(courses_list, columns=['CourseID', 'Course_Type', 'Course_Number', 'Start_Date',
-                                                         'Course_Length', 'Trainer'])
+        courses_df = pd.DataFrame(courses_list, columns=['course_ID', 'course_name', 'course_number',
+                                                            'course_length_weeks', 'start_date', 'trainer'])
         spartans_df = pd.concat(spartans_list)
         return courses_df, spartans_df  # first returns [CourseID Course_Type Course_Number Start_Date
                                         # Course_Length Trainer];
                                         # second returns [name CourseId]
 
+    def create_course_types_table(self):
+        course_type_df = self.courses_df[['course_name']].drop_duplicates()
+        course_type_df = self.add_ids_col(course_type_df, 'course_type_ID')
+        return course_type_df
+
+    def create_courses_table(self):
+        courses_df = pd.merge(self.courses_df, self.create_course_types_table(), how='left', on='course_name')
+        courses_df = pd.merge(courses_df, self.get_trainer(), how='left', on='trainer')
+        return courses_df[['course_ID', 'course_type_ID', 'course_number', 'course_length_weeks', 'start_date',
+                           'trainer_ID']]
+
+    def get_trainer(self): # for matching IDs with
+        trainer_df = self.courses_df[['trainer']]
+        df = trainer_df.drop_duplicates()
+        df = self.add_ids_col(df, 'trainer_ID')
+        return df
+
+    # fixme: combine them later id get trainer is not called anywhere else
+
+    def create_trainer_table(self): # finalised table for sql
+        df = self.get_trainer()
+        first_last_names = df['trainer'].str.split(" ", 1, expand=True)
+        first_last_names.columns = ['first_name', 'last_name']
+        df = pd.concat([df, first_last_names], axis=1)
+        df = df.drop(['trainer'], axis=1)
+        return df
+
+    def export(self):
+        self.load(self.courses_df, 'Courses')
 
 # ins = Course()
+# print(ins.create_courses_table())
+# print(ins.create_courses_table().info())
+
 # df = ins.get_course_details()
 # print(df[0].head(10))
 # print(df[0].info())
@@ -324,7 +364,7 @@ class StrengthWeaknessTechnology(Candidate):
         characteristic_df = self.unpacked_df[[self.from_column]]
         characteristic_df = characteristic_df.drop_duplicates()  # returns a series of unique values
         characteristic_df.rename(columns={self.from_column: self.col_name}, inplace=True)
-        characteristic_df = self.add_ids_df(characteristic_df, self.col_id)
+        characteristic_df = self.add_ids_col(characteristic_df, self.col_id)
         return characteristic_df
 
     def unpack_characteristic(self):
