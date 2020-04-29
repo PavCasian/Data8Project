@@ -2,6 +2,7 @@ import pandas as pd
 import re
 from files_to_dataframe import ExtractToDF
 
+# optimization method: use pandas str.split function which accepts a regex
 split_before_list = ['O', "O'", 'Mc', 'Van', 'Von', 'Di', 'Degli', 'Dell', 'De', 'Le', 'Du', 'St', 'La', 'Ten']
 
 def common_item(a, b):

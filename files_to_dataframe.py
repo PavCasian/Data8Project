@@ -4,6 +4,7 @@ from datetime import datetime
 from FileDictionary import files
 from io import StringIO
 import json
+import re
 
 class ExtractToDF:
 
@@ -15,7 +16,7 @@ class ExtractToDF:
 
 
     def from_csv(self):
-        df_list =[]
+        df_list = []
         for record in self.file_names_dict[self.folder]:
             s3object = self.s3_client.get_object(Bucket=self.bucket,
                                             Key=self.folder + '/' + record)
@@ -23,10 +24,11 @@ class ExtractToDF:
             df = pd.read_csv(StringIO(csv_string))  # read_csv wants a filepath or buffer(i.e. StringIO)
             df_list.append(df)
         main_df = pd.concat(df_list)
+        # main_df = self.filter_name_col(main_df, 'name')
         return main_df
 
     def from_txt(self):
-        df_list =[]
+        df_list = []
         for record in self.file_names_dict[self.folder]:
             data_dict = self.s3_client.get_object(Bucket=self.bucket,
                                         Key=self.folder + '/' + record)
@@ -76,10 +78,40 @@ class ExtractToDF:
         main_df = pd.DataFrame(dict_list)
         return main_df
 
+    def filter_name_col(self, df):
+        # accepts a column
+        list_names = []
+        for _, name in df.iteritems():
+            print('befor: ', name)
+            # eliminate the digits, dots, underscores in the name, make it title case and strip of padding
+            name = re.sub(r'[.;0-9_]+', '', name).title().strip()
+            # we want to capitalise the letter after word patterns such as Mac or Mc
+            name = re.sub(r'\s(Mac|Mc)([a-z])', lambda pat: pat.group(1) + pat.group(2).upper(), name)  #
+            # Dutch or French name patterns, such as van, de, den, should be lower case
+            name = re.sub(r'(\w\s)(Van(?:\sDer|\sDen)?|De)(\s\w)', lambda pat: pat.group(1) + pat.group(2).lower() +
+                                                                      pat.group(3), name)
+            print('after: ', name)
+            list_names.append(name)
+        return list_names
+        # return df
+
 
 if __name__ == '__main__':
-    test_instance = ExtractToDF('TransformedFiles')
-    # print(test_instance.filenames())
+    test_instance = ExtractToDF('Talent')
     test_csv = test_instance.from_csv()
-    print(test_csv)
-    # test_csv.to_csv('test_csv.csv')
+    play = test_csv.assign(name2=lambda x: test_instance.filter_name_col(x.name))
+    play['new']=play.name2.str.findall(r'\s(van|Van)\s')
+    for i in play[['name2', 'new']].itertuples():
+        if len(i[2]) > 0:
+            print(i)
+
+
+    # string = 'fhjggg Sergio Van Der Stumberg jfkfkklf Van Der Man Vab'
+    # pattern = re.compile(r'(Van|De|Den|Der)\s\w')
+    # matches = pattern.finditer(string)
+    # name = re.sub(r'(\w\s)(Van\s(Der|Den)?|De)(\s\w)', lambda pat: pat.group(1) + pat.group(2).lower() +
+    #                                                                   pat.group(4), string)  #
+    # print(name)
+    # # for match in matches:
+    # #     print(match.group(1).lower())
+
