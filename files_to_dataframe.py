@@ -8,12 +8,25 @@ import re
 
 class ExtractToDF:
 
+    """
+    A class that imports from 'data8-engineering-project' bucket from amazon s3 cloud storage. The files in the
+        specified folder will be concatenated to the same pandas dataframe.
+        Input: a valid folder from 'data8-engineering-project' bucket
+        Functions:
+            from_csv - concatenates csv files from s3
+            from_txt - concatenates txt files from s3
+            from_json - concatenates json files from s3
+            filter_name_col - asks for a dataframe and a string column of names to make sure that the names follow a
+                standardised pattern (i.e. in title case, no special characters, surnames starting in patterns such as
+                'Mc' or 'Mac' to have the first letter after the patterns capitalised, between-names patterns such as
+                'Van', 'Der', 'De', 'Den' to be in lower case, removes unnecessary spaces)
+    """
+
     def __init__(self, folder):
         self.folder = folder
         self.bucket = 'data8-engineering-project'
         self.file_names_dict = files(self.bucket, folder)
         self.s3_client = boto3.client('s3')
-
 
     def from_csv(self):
         df_list = []
@@ -24,7 +37,7 @@ class ExtractToDF:
             df = pd.read_csv(StringIO(csv_string))  # read_csv wants a filepath or buffer(i.e. StringIO)
             df_list.append(df)
         main_df = pd.concat(df_list)
-        # main_df = self.filter_name_col(main_df, 'name')
+        main_df = self.filter_name_col(main_df, 'name').drop_duplicates()
         return main_df
 
     def from_txt(self):
@@ -35,10 +48,8 @@ class ExtractToDF:
             file = data_dict['Body']
             df1 = pd.read_csv(file, sep="\t", header=None,
                               skiprows=3)  # gets psychometrics and presentation marks for each name
-            # for file in data['Body']:
             file.close()  # Have to  close and reassign file to read from it again to get date and academy
-            data = self.s3_client.get_object(Bucket=self.bucket,
-                                        Key=self.folder + '/' + record)
+            data = self.s3_client.get_object(Bucket=self.bucket, Key=self.folder + '/' + record)
             file = data['Body']
             dateacdf = pd.read_csv(file, sep="\t", header=None,
                                    skiprows=lambda x: x not in [0, 1])  # gets the date and academy
@@ -63,49 +74,57 @@ class ExtractToDF:
         df[['psychometrics', 'psycho.max', 'presentation', 'present.max']] = df[
             ['psychometrics', 'psycho.max', 'presentation',
              'present.max']].apply(pd.to_numeric)
+        df = self.filter_name_col(df, 'name').drop_duplicates()
         return df
 
     def from_json(self):
         dict_list = []
-        for index, record in enumerate(self.file_names_dict[self.folder]):
+        for _, record in enumerate(self.file_names_dict[self.folder]):
             s3object = self.s3_client.get_object(Bucket=self.bucket,
-                                            Key=self.folder + '/' + record)
+                                            Key=self.folder + '/' + record)  # retrieving data from s3 record by record
             bson_dict_file = s3object['Body'].read().decode('utf-8')  # reads in binary
             json_dict_file = json.loads(bson_dict_file)
             dict_list.append(json_dict_file)
-            # if index % 100 == 0:
-            #     print(f"JSON Reader Progress: {index / len(self.file_names_dict['Interview Notes']) * 100:.2f}%")
         main_df = pd.DataFrame(dict_list)
+        main_df = self.filter_name_col(main_df, 'name').drop_duplicates()
+
         return main_df
 
-    def filter_name_col(self, df):
-        # accepts a column
+    # @staticmethod
+    def filter_name_col(self, df, col):
+        """the values in the name column in one file may not match with the other files' name columns"""
         list_names = []
-        for _, name in df.iteritems():
-            print('befor: ', name)
+        for _, name in df[col].iteritems():
             # eliminate the digits, dots, underscores in the name, make it title case and strip of padding
             name = re.sub(r'[.;0-9_]+', '', name).title().strip()
             # we want to capitalise the letter after word patterns such as Mac or Mc
-            name = re.sub(r'\s(Mac|Mc)([a-z])', lambda pat: pat.group(1) + pat.group(2).upper(), name)  #
-            # Dutch or French name patterns, such as van, de, den, should be lower case
+            name = re.sub(r'\b(Mac|Mc)([a-z])', lambda pat: pat.group(1) + pat.group(2).upper(), name)
+            # Dutch or French name patterns, such as van, de, den, should be lower case if between names
             name = re.sub(r'(\w\s)(Van(?:\sDer|\sDen)?|De)(\s\w)', lambda pat: pat.group(1) + pat.group(2).lower() +
-                                                                      pat.group(3), name)
-            print('after: ', name)
+                          pat.group(3), name)  # groups are marked by parentheses in the expression
+            # removes spaces between '-': Lester Weddeburn - Scrimgeour
+            name = re.sub("\s*(\W)\s*", r'\1', name)  # \W will match any non-word characters
             list_names.append(name)
-        return list_names
-        # return df
+        df[col] = list_names
+        return df
 
 
 if __name__ == '__main__':
-    test_instance = ExtractToDF('Talent')
-    test_csv = test_instance.from_csv()
-    play = test_csv.assign(name2=lambda x: test_instance.filter_name_col(x.name))
-    play['new']=play.name2.str.findall(r'\s(van|Van)\s')
-    for i in play[['name2', 'new']].itertuples():
-        if len(i[2]) > 0:
-            print(i)
+    test_instance = ExtractToDF('SpartaDays')
+    test_csv = test_instance.from_txt()
+    print(test_csv[test_csv['name'].str.contains("-")])
+    # play = test_csv.assign(name2=lambda x: test_instance.filter_name_col(x.name))
+    # play['new']=play.name2.str.findall(r'\s(van|Van)\s')
+    # for i in play[['name2', 'new']].itertuples():
+    #     if len(i[2]) > 0:
+    #         print(i)
 
 
+    # text_instance = ExtractToDF('SpartaDays')
+    # test_text = text_instance.from_txt()
+    # test_text.to_csv('sparta_days.csv')
+    # string = 'Marie-ann Harvard'
+    # print(string.title())
     # string = 'fhjggg Sergio Van Der Stumberg jfkfkklf Van Der Man Vab'
     # pattern = re.compile(r'(Van|De|Den|Der)\s\w')
     # matches = pattern.finditer(string)

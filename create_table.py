@@ -42,13 +42,56 @@ class Table:
             sys.exit(1)  # will stop the program if exception raised
 
     def add_ids_col(self, df, column_name):
-        return df.assign(**{column_name: np.arange(1, len(df) + 1)})
+        return df.assign(**{column_name: np.arange(1, len(df) + 1)})  # ids start from 1
 
     def load(self, df, sql_table_name):
         """Note that the columns in the dataframe need to match the column names
         and order of those in the sql table"""
         df.to_sql(sql_table_name, con=Table.engine, if_exists='append', index=False)
 
+
+class Typo:
+
+    def __init__(self, name_series):
+        self.name_series = name_series
+
+    def find_typos(self):
+        dict_list = {}  # contain the items in the column and their occurrences
+        typo_correct_pair = []
+        # adding to dict_list
+        for _, name in self.name_series.iteritems():  # will get the index and the value for that column
+            if name not in dict_list and name is not np.nan:  # not interested in nans
+                dict_list[name] = 1
+            elif name in dict_list:
+                dict_list[name] += 1
+        # adding to typo_correct_pair
+        for to in dict_list:
+            for against in dict_list:
+                if distance.levenshtein(to, against) == 1:  # compares the difference in letters bw the 2 strings
+                    if (against, to) not in typo_correct_pair:  # checking if same pair but diff order already exists
+                        typo_correct_pair.append((to, against))
+        return typo_correct_pair, dict_list
+
+    def replace_typos(self):
+        pairs, name_dict = self.find_typos()
+        # check each pair and see which has more occurences
+        for pair in pairs:
+            frequentest_name = ''
+            max_freq = 0
+            for name in pair:
+                if name_dict[name] > max_freq:
+                    frequentest_name = name
+                    max_freq = name_dict[name]
+            # replace the less frequent with more frequent in name_series
+            self.name_series.replace([nome for nome in pair if nome != frequentest_name], frequentest_name, inplace = True)
+        return self.name_series
+
+
+# tst = Table()
+# df = tst.extract('Talent')
+# typo_ins = Typo(df['invited_by'])
+# typo_df = typo_ins.replace_typos()
+# print(typo_df.unique())
 
 class Trainer(Table):
 
@@ -134,6 +177,7 @@ class Course(Table):
             # we also want the courseID and the spartan's name
             spartans_group = cohort_performance_df[['name']]
             spartans_group = spartans_group.assign(CourseId=course_id) # creates column CourseId and assigns value
+            spartans_group = spartans_group.assign(course_name=course_name) # creates column CourseId and assigns value
             spartans_list.append(spartans_group)
         courses_df = pd.DataFrame(courses_list, columns=['course_ID', 'course_name', 'course_number',
                                                             'course_length_weeks', 'start_date', 'trainer'])
@@ -183,56 +227,13 @@ class Course(Table):
 # print(df[1].info())
 
 
-class Typo:
-
-    def __init__(self, name_series):
-        self.name_series = name_series
-
-    def find_typos(self):
-        dict_list = {}  # contain the items in the column and their occurrences
-        typo_correct_pair = []
-        # adding to dict_list
-        for _, name in self.name_series.iteritems():  # will get the index and the value for that column
-            if name not in dict_list and name is not np.nan:  # not interested in nans
-                dict_list[name] = 1
-            elif name in dict_list:
-                dict_list[name] += 1
-        # adding to typo_correct_pair
-        for to in dict_list:
-            for against in dict_list:
-                if distance.levenshtein(to, against) == 1:  # compares the difference in letters bw the 2 strings
-                    if (against, to) not in typo_correct_pair:  # checking if same pair but diff order already exists
-                        typo_correct_pair.append((to, against))
-        return typo_correct_pair, dict_list
-
-    def replace_typos(self):
-        pairs, name_dict = self.find_typos()
-        # check each pair and see which has more occurences
-        for pair in pairs:
-            frequentest_name = ''
-            max_freq = 0
-            for name in pair:
-                if name_dict[name] > max_freq:
-                    frequentest_name = name
-                    max_freq = name_dict[name]
-            # replace the less frequent with more frequent in name_series
-            self.name_series.replace([nome for nome in pair if nome != frequentest_name], frequentest_name, inplace = True)
-        return self.name_series
-
-
-# tst = Table()
-# df = tst.extract('Talent')
-# typo_ins = Typo(df['invited_by'])
-# typo_df = typo_ins.replace_typos()
-# print(typo_df.unique())
-
-
 class Recruiter(Table):
 
     def __init__(self):
         super().__init__()
 
-    def prepare_recruiter_table(self):  # this function generates a table which is suitable for doing the merge based on name
+    def prepare_recruiter_table(self):
+        """ Returns a table with unique full names, without typos, of recruiters column (i.e. 'invited_by)"""
         talent_data = self.extract('Talent', file_type='csv')
         recruiter = talent_data['invited_by']  # recruiter full name column
         recruiter = recruiter.dropna()
@@ -244,7 +245,7 @@ class Recruiter(Table):
     def create_recruiter_table(self):
         recruiter_df = self.prepare_recruiter_table()
         recruiter_df = split_full_name(recruiter_df['invited_by'])
-        recruiter_df= recruiter_df.drop(['invited_by'], axis=1)
+        recruiter_df = recruiter_df.drop(['invited_by'], axis=1)
         return recruiter_df
 
 # ins = Recruiter().prepare_recruiter_table()
@@ -255,6 +256,7 @@ class Candidate(Table):
 
     def __init__(self):
         super().__init__()
+        self.full_name_cand_df = self.prepare_candidate_table()
 
     def phonenoformat(self, df, col):
         df = df
@@ -264,38 +266,29 @@ class Candidate(Table):
             df[col] = df[col].str.replace(c, '')
         return df
 
-    def dateformat(self, df,
-                   col):  # takes in the bucket and folder and creates df using above function & formats column specified to date
-        df = df
-        df[col] = pd.to_datetime(df[col])
-        return df
-
     def prepare_candidate_table(self):
         df = self.extract('Talent', file_type='csv')
         df = self.phonenoformat(df, 'phone_number')
-        df = self.dateformat(df, 'dob')
-        df.drop(['id'], axis = 1, inplace=True)  # in each file in 'Talent' indexing starts from 0
+        # print(df.info())
+        # print(df['invited_date'].map(int, na_action='ignore').dtype)
+        df['interview_date'] = pd.to_datetime(df['invited_date'].astype('Int64').map(str) + ' ' + df['month'].map(str),
+                                              format='%d %B %Y', errors='coerce')
+        df.drop(['id'], axis=1, inplace=True)  # in each file in 'Talent' indexing starts from 0
         df.drop_duplicates(inplace=True)
         df['CandidateID'] = np.arange(1, len(df) + 1)
-        df = df.fillna(0)
-        # cc = namecon(coursecand())
-        # cc = cc.drop(['name'], axis=1)
-        # df = pd.merge(df, cc, how='left', on= 'namecon')
-        return df
-
-    def create_candidate_table(self):
-        df = self.prepare_candidate_table()
-        recruiter_table = Recruiter().prepare_recruiter_table()
-        df = pd.merge(df, recruiter_table, how='left', on='invited_by')
-        df1 = split_full_name(df['name'])
-        df =  pd.concat([df, df1], axis=1)
-        df = df.drop(['id', 'invited_by', 'invited_date', 'month', 'name'], axis=1)
         # df = df.fillna(0)
         return df
 
-    def add_candidate_id(self, with_df):
-        candidate_df = self.prepare_candidate_table()[['CandidateID', 'name']]
-        merged_df = pd.merge(with_df, candidate_df, how='left', on='name')
+    def create_candidate_table(self):
+        recruiter_table = Recruiter().prepare_recruiter_table()
+        df = pd.merge(self.full_name_cand_df, recruiter_table, how='left', on='invited_by')
+        df1 = split_full_name(df['name'])
+        df = pd.concat([df, df1], axis=1)
+        df = df.drop(['id', 'invited_by', 'invited_date', 'month', 'name'], axis=1)
+        return df
+
+    def add_candidate_id(self, to_df):
+        merged_df = pd.merge(to_df, self.full_name_cand_df[['CandidateID', 'name']], how='left', on='name')
         return merged_df
 
 
@@ -310,6 +303,8 @@ class Spartan(Course, Candidate):
 
     def add_spartan_ids(self):
         spartan_df = self.get_course_details()[1]
+        # print(spartan_df.head(10))
+        # print('##', spartan_df.info())
         # we need the candidate id to replace spartan name, for this we merge with cand table on name
         candidate_df = self.prepare_candidate_table()[['CandidateID', 'name']]
         spartan_df = pd.merge(spartan_df, candidate_df, how='left', on='name')
@@ -328,19 +323,33 @@ class Assessment(Candidate):
     def __init__(self):
         super().__init__()
 
+    # def prepare_assessment_table(self):
+    #     candidate_df = self.prepare_candidate_table()
+    #     assess_df = self.extract('TransformedFiles')
+    #     assess_df.drop_duplicates(inplace=True)
+    #     assess_df = pd.merge(assess_df, candidate_df, how='left', on='name')
+    #     sparta_day_df = self.extract('SpartaDays', file_type='txt')
+    #     sparta_day_df['name'] = sparta_day_df['name'].str.strip()
+    #     sparta_day_df.drop_duplicates(inplace=True)
+    #     assess_df = pd.merge(assess_df[['name', 'CandidateID', 'geo_flex', 'self_development', 'financial_support_self','result', 'course_interest']],
+    #                          sparta_day_df[['name', 'academy', 'psychometrics', 'presentation','date']], on='name')
+    #     return assess_df
+
     def prepare_assessment_table(self):
-        candidate_df = self.prepare_candidate_table()
         assess_df = self.extract('TransformedFiles')
-        assess_df.drop_duplicates(inplace=True)
-        assess_df = pd.merge(assess_df, candidate_df, how='left', on='name')
+
+        assess_df['date'] = pd.to_datetime(assess_df['date'], format="%d/%m/%Y")
+
         sparta_day_df = self.extract('SpartaDays', file_type='txt')
-        sparta_day_df['name'] = sparta_day_df['name'].str.strip()
-        sparta_day_df.drop_duplicates(inplace=True)
-        assess_df = pd.merge(assess_df[['name', 'CandidateID', 'geo_flex', 'self_development', 'financial_support_self','result', 'course_interest']],
-                             sparta_day_df[['name', 'academy', 'psychometrics', 'presentation','date']], on='name')
+        assess_df = pd.merge(assess_df, sparta_day_df, on=['name', 'date'])
+        assess_df = pd.merge(assess_df, self.full_name_cand_df, left_on=['name', 'date'],
+                             right_on=['name', 'interview_date'])
+        print(assess_df[assess_df['name'].duplicated()])
+        print(assess_df)
         return assess_df
 
 
+Assessment().prepare_assessment_table()
 
 class StrengthWeaknessTechnology(Candidate):
 
