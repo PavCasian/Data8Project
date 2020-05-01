@@ -269,14 +269,11 @@ class Candidate(Table):
     def prepare_candidate_table(self):
         df = self.extract('Talent', file_type='csv')
         df = self.phonenoformat(df, 'phone_number')
-        # print(df.info())
-        # print(df['invited_date'].map(int, na_action='ignore').dtype)
         df['interview_date'] = pd.to_datetime(df['invited_date'].astype('Int64').map(str) + ' ' + df['month'].map(str),
-                                              format='%d %B %Y', errors='coerce')
+                                              errors='coerce')  # format='%d %B %Y'  &  '%d %b %Y'
         df.drop(['id'], axis=1, inplace=True)  # in each file in 'Talent' indexing starts from 0
         df.drop_duplicates(inplace=True)
-        df['CandidateID'] = np.arange(1, len(df) + 1)
-        # df = df.fillna(0)
+        df = self.add_ids_col(df, 'candidate_ID')
         return df
 
     def create_candidate_table(self):
@@ -288,7 +285,7 @@ class Candidate(Table):
         return df
 
     def add_candidate_id(self, to_df):
-        merged_df = pd.merge(to_df, self.full_name_cand_df[['CandidateID', 'name']], how='left', on='name')
+        merged_df = pd.merge(to_df, self.full_name_cand_df[['candidate_ID', 'name']], how='left', on='name')
         return merged_df
 
 
@@ -306,7 +303,7 @@ class Spartan(Course, Candidate):
         # print(spartan_df.head(10))
         # print('##', spartan_df.info())
         # we need the candidate id to replace spartan name, for this we merge with cand table on name
-        candidate_df = self.prepare_candidate_table()[['CandidateID', 'name']]
+        candidate_df = self.prepare_candidate_table()[['candidate_ID', 'name']]
         spartan_df = pd.merge(spartan_df, candidate_df, how='left', on='name')
         return spartan_df
 
@@ -322,34 +319,44 @@ class Assessment(Candidate):
 
     def __init__(self):
         super().__init__()
+        self.sparta_day_df = self.extract('SpartaDays', file_type='txt')
 
-    # def prepare_assessment_table(self):
-    #     candidate_df = self.prepare_candidate_table()
-    #     assess_df = self.extract('TransformedFiles')
-    #     assess_df.drop_duplicates(inplace=True)
-    #     assess_df = pd.merge(assess_df, candidate_df, how='left', on='name')
-    #     sparta_day_df = self.extract('SpartaDays', file_type='txt')
-    #     sparta_day_df['name'] = sparta_day_df['name'].str.strip()
-    #     sparta_day_df.drop_duplicates(inplace=True)
-    #     assess_df = pd.merge(assess_df[['name', 'CandidateID', 'geo_flex', 'self_development', 'financial_support_self','result', 'course_interest']],
-    #                          sparta_day_df[['name', 'academy', 'psychometrics', 'presentation','date']], on='name')
-    #     return assess_df
 
     def prepare_assessment_table(self):
-        assess_df = self.extract('TransformedFiles')
+        interview_df = self.extract('TransformedFiles')
+        # to merge on date, both columns in the merging dfs need to be of the same type
+        interview_df['date'] = pd.to_datetime(interview_df['date'], format="%d/%m/%Y")
+        # interview_df has duplicates, same name and interview date,however strengths/weak/techs differ so will remove
+        # duplicates based on the 'name' and 'date' column. It's highly unlikely to have same name on the same date
+        interview_df = interview_df.drop_duplicates(subset=['name', 'date'])
+        # Will merge SpartaDays and Interview Notes as both include candidate assessment. Note that there are some
+        # candidates in the sparta_day_df which are not in the interview_notes files, hence outer join used
+        assess_df = pd.merge(interview_df, self.sparta_day_df, on=['name', 'date'], how='outer',
+                             validate='one_to_one')
+        # To obtain candidate_ID
+        assess_df = pd.merge(assess_df, self.full_name_cand_df[['candidate_ID', 'name', 'interview_date']],
+                             left_on=['name', 'date'], right_on=['name', 'interview_date'], how='left')
+        # To obtain academy_ID
+        assess_df = pd.merge(assess_df, self.create_academy_table(), on='academy_name', how='left')
+        # To obtain course_type_ID
+        assess_df = pd.merge(assess_df, Course().create_course_types_table(), left_on='course_interest',
+                             right_on='course_name', how='left')
+        # rename some columns
+        {### continue her}
+        return assess_df[['candidate_ID', 'psychometrics_score', 'presentation_score', 'geo_flex', 'self-development',
+                            'financial_support', 'result', 'course_type_ID', 'academy_ID', 'interview_date']]
 
-        assess_df['date'] = pd.to_datetime(assess_df['date'], format="%d/%m/%Y")
+    def create_academy_table(self):
+        df = self.sparta_day_df[['academy_name']]
+        df = df.drop_duplicates()
+        df = self.add_ids_col(df, 'academy_ID')
+        return df[['academy_ID', 'academy_name']]
 
-        sparta_day_df = self.extract('SpartaDays', file_type='txt')
-        assess_df = pd.merge(assess_df, sparta_day_df, on=['name', 'date'])
-        assess_df = pd.merge(assess_df, self.full_name_cand_df, left_on=['name', 'date'],
-                             right_on=['name', 'interview_date'])
-        print(assess_df[assess_df['name'].duplicated()])
-        print(assess_df)
-        return assess_df
+    def export(self):
+        self.load(self.prepare_assessment_table(), 'Interview_Assessment')
 
 
-Assessment().prepare_assessment_table()
+Assessment().export()
 
 class StrengthWeaknessTechnology(Candidate):
 
