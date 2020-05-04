@@ -108,11 +108,11 @@ CREATE TABLE Candidate_Weaknesses(
 
 
 -- Interview Assesment table
-DROP TABLE IF EXISTS Interview_Assesment
-CREATE TABLE Interview_Assesment (
+DROP TABLE IF EXISTS Interview_Assessment
+CREATE TABLE Interview_Assessment (
     candidate_ID INT,
-	psychometrics_score INT,
-	presentation_score INT,
+	psychometrics_score_max_100 INT,
+	presentation_score_max_32 INT,
     geo_flex VARCHAR(10),
     self_development VARCHAR(10),
     financial_support VARCHAR(10),

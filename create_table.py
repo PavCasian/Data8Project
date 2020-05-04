@@ -10,6 +10,7 @@ from split_name_auto import split_full_name
 import distance
 from sqlalchemy import create_engine
 import urllib
+import re
 
 
 class Table:
@@ -47,7 +48,7 @@ class Table:
     def load(self, df, sql_table_name):
         """Note that the columns in the dataframe need to match the column names
         and order of those in the sql table"""
-        df.to_sql(sql_table_name, con=Table.engine, if_exists='append', index=False)
+        df.to_sql(sql_table_name, con=Table.engine, if_exists='replace', index=False)
 
 
 class Typo:
@@ -92,53 +93,6 @@ class Typo:
 # typo_ins = Typo(df['invited_by'])
 # typo_df = typo_ins.replace_typos()
 # print(typo_df.unique())
-
-class Trainer(Table):
-
-    def __init__(self):
-        super().__init__()
-
-    def get_trainer(self): # for matching IDs with
-        df = self.extract('Academy', file_type='csv')
-        df = df[['trainer']]
-        df = df.drop_duplicates()
-        df = self.add_ids_col(df, 'trainer_ID')
-        return df
-
-    # fixme: combine them later id get trainer is not called anywhere else
-
-    def create_trainer_table(self): # finalised table for sql
-        df = self.get_trainer()
-        first_last_names = df['trainer'].str.split(" ", 1, expand=True)
-        first_last_names.columns = ['first_name', 'last_name']
-        df = pd.concat([df, first_last_names], axis=1)
-        df = df.drop(['trainer'], axis=1)
-        return df
-
-    def export(self):
-        self.load(self.create_trainer_table(), 'Trainers')
-
-# inst = Trainer()
-# print(inst.export())
-
-
-class Academy(Table):
-
-    def __init__(self):
-        super().__init__()
-
-    def get_academy(self):
-        df = self.extract('SpartaDays', file_type='txt')
-        df = df[['academy_name']]
-        df = df.drop_duplicates()
-        df = self.add_ids_col(df, 'academy_ID')
-        return df[['academy_ID', 'academy_name']]
-
-    def export(self):
-        self.load(self.get_academy(), 'Academies')
-
-# test_inst = Academy()
-# test_inst.export()
 
 class Course(Table):
 
@@ -297,7 +251,6 @@ class Spartan(Course, Candidate):
     def __init__(self):
         super().__init__()
 
-
     def add_spartan_ids(self):
         spartan_df = self.get_course_details()[1]
         # print(spartan_df.head(10))
@@ -320,31 +273,39 @@ class Assessment(Candidate):
     def __init__(self):
         super().__init__()
         self.sparta_day_df = self.extract('SpartaDays', file_type='txt')
-
+        self.interview_df = self.prepare_assessment_table()
 
     def prepare_assessment_table(self):
-        interview_df = self.extract('TransformedFiles')
+        interview_df = self.extract('TransformedFiles') # replace with extract from json folder
         # to merge on date, both columns in the merging dfs need to be of the same type
         interview_df['date'] = pd.to_datetime(interview_df['date'], format="%d/%m/%Y")
         # interview_df has duplicates, same name and interview date,however strengths/weak/techs differ so will remove
         # duplicates based on the 'name' and 'date' column. It's highly unlikely to have same name on the same date
-        interview_df = interview_df.drop_duplicates(subset=['name', 'date'])
+        interview_df.drop_duplicates(subset=['name', 'date'], inplace=True)
         # Will merge SpartaDays and Interview Notes as both include candidate assessment. Note that there are some
         # candidates in the sparta_day_df which are not in the interview_notes files, hence outer join used
-        assess_df = pd.merge(interview_df, self.sparta_day_df, on=['name', 'date'], how='outer',
-                             validate='one_to_one')
+        interview_df = pd.merge(interview_df, self.sparta_day_df, on=['name', 'date'], how='outer',
+                                validate='one_to_one')
         # To obtain candidate_ID
-        assess_df = pd.merge(assess_df, self.full_name_cand_df[['candidate_ID', 'name', 'interview_date']],
-                             left_on=['name', 'date'], right_on=['name', 'interview_date'], how='left')
+        interview_df = pd.merge(interview_df, self.full_name_cand_df[['candidate_ID', 'name', 'interview_date']],
+                                left_on=['name', 'date'], right_on=['name', 'interview_date'], how='left')
+        return interview_df  # all the columns from Interview Notes(inc. strength, weakness, tech) and Sparta Day +
+                                # candidate_ID, candidate_name and interview_date
+
+    def create_interview_assessment_table(self):
         # To obtain academy_ID
-        assess_df = pd.merge(assess_df, self.create_academy_table(), on='academy_name', how='left')
+        assess_df = pd.merge(self.interview_df, self.create_academy_table(), on='academy_name', how='left')
         # To obtain course_type_ID
         assess_df = pd.merge(assess_df, Course().create_course_types_table(), left_on='course_interest',
                              right_on='course_name', how='left')
-        # rename some columns
-        {### continue her}
-        return assess_df[['candidate_ID', 'psychometrics_score', 'presentation_score', 'geo_flex', 'self-development',
-                            'financial_support', 'result', 'course_type_ID', 'academy_ID', 'interview_date']]
+        # rename columns
+        assess_df.rename(columns={'psychometrics': 'psychometrics_score_max_100',
+                                  'presentation': 'presentation_score_max_32',
+                                  'financial_support_self': 'financial_support',
+                                  'self-development': 'self_development'}, inplace=True)
+        return assess_df[['candidate_ID', 'psychometrics_score_max_100', 'presentation_score_max_32', 'geo_flex',
+                          'self_development', 'financial_support', 'result', 'course_type_ID', 'academy_ID',
+                          'interview_date']]
 
     def create_academy_table(self):
         df = self.sparta_day_df[['academy_name']]
@@ -356,60 +317,91 @@ class Assessment(Candidate):
         self.load(self.prepare_assessment_table(), 'Interview_Assessment')
 
 
-Assessment().export()
+# Assessment().export()
 
-class StrengthWeaknessTechnology(Candidate):
+class StrengthWeaknessTechnology(Assessment):
 
-    def __init__(self, from_column): # 'strengths', 'weaknesses' or 'technologies'
+    """Creates the following tables:
+        Strengths, Weaknesses, Technologies, Candidate_Strengths, Candidate_Weaknesses, Candidate_Technologies
+        Load them all in the sql database by calling the export function.
+
+    """
+    def __init__(self):
         super().__init__()
-        self.from_column = from_column
-        self.assess_df = self.extract('TransformedFiles', file_type='csv')
         self.unpacked_df = pd.DataFrame()
-        if self.from_column == 'strengths':
-            self.col_name = 'StrengthName'
-            self.col_id = 'StrengthID'
-        elif self.from_column == 'weaknesses':
-            self.col_name = 'WeaknessName'
-            self.col_id = 'WeaknessID'
-        elif self.from_column == 'technologies':
-            self.col_name = 'TechName'
-            self.col_id = 'TechID'
+        self.from_column = ''  # 'strengths', 'weaknesses' or 'technologies'  specified by specify_col_names()
+        self.col_name = ''  # depends on from_column
+        self.col_id = ''  # depends on from_column
 
-    def create_characteristic_table(self):  # pull all characteristic from_column in a df
+    def create_characteristic_candidate_table(self, characteristic_col):
+        self.specify_col_names(characteristic_col)
+        characteristic_df = self.create_characteristic_table(characteristic_col)
+        characteristic_candidate_df = pd.merge(self.unpacked_df, characteristic_df, how='left', left_on=self.from_column,
+                                        right_on=self.col_name)
+        # to accommodate the self_score column in technologies
+        if characteristic_col != 'technologies':
+            characteristic_candidate_df = characteristic_candidate_df[['candidate_ID', self.col_id]]
+        else:
+            characteristic_candidate_df = characteristic_candidate_df[['candidate_ID', self.col_id, 'self_score']]
+        return characteristic_candidate_df
+
+    def specify_col_names(self, characteristic_col):
+        if characteristic_col == 'strengths':
+            self.from_column = 'strengths'
+            self.col_name = 'strength_name'
+            self.col_id = 'strength_ID'
+        elif characteristic_col == 'weaknesses':
+            self.from_column = 'weaknesses'
+            self.col_name = 'weakness_name'
+            self.col_id = 'weakness_ID'
+        elif characteristic_col == 'technologies':
+            self.from_column = 'technologies'
+            self.col_name = 'technology_name'
+            self.col_id = 'technology_ID'
+
+    def create_characteristic_table(self, characteristic_col):  # pull all characteristic from_column in a df
+        self.specify_col_names(characteristic_col)  # although the right column names were specified in the create_
+        # _candidate_characteristic_table() already, specifying again makes the current function independent of the
+        # order functions are called
         self.unpack_characteristic()  # need to unpack first and then able to work with them
-        characteristic_df = self.unpacked_df[[self.from_column]]
+        characteristic_df = self.unpacked_df.loc[:, [self.from_column]]
         characteristic_df = characteristic_df.drop_duplicates()  # returns a series of unique values
         characteristic_df.rename(columns={self.from_column: self.col_name}, inplace=True)
         characteristic_df = self.add_ids_col(characteristic_df, self.col_id)
-        return characteristic_df
+        return characteristic_df  # characteristic name and its ID
 
     def unpack_characteristic(self):
+        # creating a copy of relevant info from interview_df
+        interview_df_with_cand_ids = self.interview_df.loc[:, ['candidate_ID', 'strengths', 'weaknesses', 'technologies']]
         # each candidate has str list for strengths/weaknesses e.g. '['Intolerant', 'Impulsive']' and list of dicts for
-        # for technologies [{'language': 'PHP', 'self_score': 4}, {'language': 'Python', 'self_score': 4}]
-        # literal_eval removes the string quotes of the list
-        self.assess_df[self.from_column] = self.assess_df[self.from_column].apply(ast.literal_eval)
-        assess_df_ids = self.add_candidate_id(self.assess_df)
+        # technologies [{'language': 'PHP', 'self_score': 4}, {'language': 'Python', 'self_score': 4}]
+        # Few rows include nan, which cannt be parse by literal_eval, which removes the string quotes of the list, so we
+        # replace nan with '[]' for consistency
+        interview_df_with_cand_ids[self.from_column] = interview_df_with_cand_ids[self.from_column].fillna('[]').apply(ast.literal_eval)
         # take each column in df, except from_column, and repeat each row based on the number of list items in the
         # from_column row; to this assign the corresponding from_column values which were flatten (into a single list)
-        self.unpacked_df = pd.DataFrame({col: np.repeat(assess_df_ids[col].values,
-                                                        assess_df_ids[self.from_column].str.len())
-                               for col in assess_df_ids.columns.drop(self.from_column)}
-                              ).assign(**{self.from_column: np.concatenate(assess_df_ids[self.from_column].values)})
+        self.unpacked_df = pd.DataFrame({col: np.repeat(interview_df_with_cand_ids[col].values,
+                                                        interview_df_with_cand_ids[self.from_column].str.len())
+                                        for col in interview_df_with_cand_ids.columns.drop(self.from_column)}
+                                        ).assign(**{self.from_column:
+                                                    np.concatenate(interview_df_with_cand_ids[self.from_column].values)})
         # now for technologies, each row contains one dict, we need to split each dictionary into 2 columns
         # (e.g. 'language' and 'self-score')
         if self.from_column == 'technologies':
             self.unpacked_df = pd.concat([self.unpacked_df.drop(['technologies'], axis=1),
-                                     self.unpacked_df['technologies'].apply(pd.Series)], axis=1)
+                                         self.unpacked_df['technologies'].apply(pd.Series)], axis=1)
             self.from_column = 'language'  # for use in create_characteristic table as 'technologies' is not valid more
 
+    def export(self):
+        self.load(self.create_characteristic_candidate_table('strengths'), 'Candidate_Strengths')
+        self.load(self.create_characteristic_table('strengths'), 'Strengths')
+        self.load(self.create_characteristic_candidate_table('weaknesses'), 'Candidate_Weaknesses')
+        self.load(self.create_characteristic_table('weaknesses'), 'Weaknesses')
+        self.load(self.create_characteristic_candidate_table('technologies'), 'Candidate_Technologies')
+        self.load(self.create_characteristic_table('technologies'), 'Technologies')
 
-    def create_characteristic_candidate_table(self):
-        charact_df = self.create_characteristic_table()
-        charact_candidate_df = pd.merge(self.unpacked_df, charact_df, how='left', left_on=self.from_column,
-                                        right_on=self.col_name)
-        return charact_candidate_df
+# print(StrengthWeaknessTechnology().export())
 
-import re
 class AcademyCompetency(Spartan):
 
     """ A class that will create a table for one of the following competencies:
