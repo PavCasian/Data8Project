@@ -11,7 +11,7 @@ import distance
 from sqlalchemy import create_engine
 import urllib
 import re
-
+import time
 
 class Table:
 
@@ -119,7 +119,6 @@ class Course(Table):
                                         Key=self.folder + '/' + file_name)
             cohort_performance_df = pd.read_csv(data['Body'])
             trainer_name = cohort_performance_df.at[0, 'trainer']
-
             column_names = list(cohort_performance_df.columns.values)  # gets the names of all the columns
             last_column = column_names[-1]  # gets the name of the last column for this particular table
             if len(last_column) < 6:  # the length of the name varies depending on whether its 8 or 10 week course
@@ -130,12 +129,14 @@ class Course(Table):
             courses_list.append(course_details)
             # we also want the courseID and the spartan's name
             spartans_group = cohort_performance_df[['name']]
-            spartans_group = spartans_group.assign(CourseId=course_id) # creates column CourseId and assigns value
+            spartans_group = spartans_group.assign(course_ID=course_id) # creates column CourseId and assigns value
             spartans_group = spartans_group.assign(course_name=course_name) # creates column CourseId and assigns value
             spartans_list.append(spartans_group)
         courses_df = pd.DataFrame(courses_list, columns=['course_ID', 'course_name', 'course_number',
                                                             'course_length_weeks', 'start_date', 'trainer'])
         spartans_df = pd.concat(spartans_list)
+        # to match the name column with dfs from other files
+        spartans_df = ExtractToDF('Academy').filter_name_col(spartans_df, 'name').drop_duplicates()
         return courses_df, spartans_df  # first returns [CourseID Course_Type Course_Number Start_Date
                                         # Course_Length Trainer];
                                         # second returns [name CourseId]
@@ -193,7 +194,7 @@ class Recruiter(Table):
         recruiter = recruiter.dropna()
         recruiter_corrected = Typo(recruiter).replace_typos()  # class for identifying and correcting typos
         recruiter_df = recruiter_corrected.drop_duplicates().to_frame()
-        recruiter_df['recruiter_id'] = np.arange(1, len(recruiter_df) + 1) # index starting from 1
+        recruiter_df = self.add_ids_col(recruiter_df, 'talent_person_ID') # index starting from 1
         return recruiter_df
 
     def create_recruiter_table(self):
@@ -235,38 +236,19 @@ class Candidate(Table):
         df = pd.merge(self.full_name_cand_df, recruiter_table, how='left', on='invited_by')
         df1 = split_full_name(df['name'])
         df = pd.concat([df, df1], axis=1)
-        df = df.drop(['id', 'invited_by', 'invited_date', 'month', 'name'], axis=1)
-        return df
+        df.rename(columns={'dob': 'date_of_birth', 'address': 'candidate_address', 'phone_number': 'phone',
+                           'uni': 'university'}, inplace=True)
+        return df.loc[:, ['candidate_ID', 'first_name', 'last_name', 'gender', 'email', 'city', 'candidate_address',
+                          'postcode', 'phone', 'university', 'degree', 'talent_person_ID']]
 
-    def add_candidate_id(self, to_df):
-        merged_df = pd.merge(to_df, self.full_name_cand_df[['candidate_ID', 'name']], how='left', on='name')
-        return merged_df
+    def export(self):
+        self.load(self.create_candidate_table(), 'Candidates')
 
 
 # df = Candidate().candidates_table()
-# print(df.info())
-
-class Spartan(Course, Candidate):
-
-    def __init__(self):
-        super().__init__()
-
-    def add_spartan_ids(self):
-        spartan_df = self.get_course_details()[1]
-        # print(spartan_df.head(10))
-        # print('##', spartan_df.info())
-        # we need the candidate id to replace spartan name, for this we merge with cand table on name
-        candidate_df = self.prepare_candidate_table()[['candidate_ID', 'name']]
-        spartan_df = pd.merge(spartan_df, candidate_df, how='left', on='name')
-        return spartan_df
-
-    def create_spartan_table(self):
-        spartan_df = self.add_spartan_ids()
-        return spartan_df.drop(['name'], axis=1, inplace=True)
-
-
-# ins = Spartan()
-# ins.create_spartan_table()
+# print(time.perf_counter())
+# Candidate().export()
+# print(time.perf_counter())
 
 class Assessment(Candidate):
 
@@ -290,7 +272,7 @@ class Assessment(Candidate):
         interview_df = pd.merge(interview_df, self.full_name_cand_df[['candidate_ID', 'name', 'interview_date']],
                                 left_on=['name', 'date'], right_on=['name', 'interview_date'], how='left')
         return interview_df  # all the columns from Interview Notes(inc. strength, weakness, tech) and Sparta Day +
-                                # candidate_ID, candidate_name and interview_date
+                             # candidate_ID, candidate_name and interview_date
 
     def create_interview_assessment_table(self):
         # To obtain academy_ID
@@ -314,10 +296,12 @@ class Assessment(Candidate):
         return df[['academy_ID', 'academy_name']]
 
     def export(self):
-        self.load(self.prepare_assessment_table(), 'Interview_Assessment')
+        self.load(self.create_interview_assessment_table(), 'Interview_Assessment')
+        self.load(self.create_academy_table(), 'Academies')
 
 
 # Assessment().export()
+
 
 class StrengthWeaknessTechnology(Assessment):
 
@@ -402,9 +386,37 @@ class StrengthWeaknessTechnology(Assessment):
 
 # print(StrengthWeaknessTechnology().export())
 
+
+class Spartan(Course, Assessment):
+
+    def __init__(self):
+        super().__init__()
+
+    def add_spartan_ids(self):
+        spartan_df = self.get_course_details()[1]
+        # we need the candidate id to replace spartan name, which are integrated already in interview_df
+        candidate_df = self.interview_df.loc[:, ['candidate_ID', 'name', 'course_interest']]
+        # to increase reliability merging could be done on both course_name and candidate name, however, not every
+        # candidate in interview df has the course name specified (e.g. 'Matty Ceney'), as well as there are differences
+        # between the candidates' course_interest in the interview and the actual course that they got
+        # into (e.g. 'Hi Romke')
+        spartan_df = pd.merge(spartan_df, candidate_df, how='left', on='name')
+        spartan_df.rename(columns={'candidate_ID': 'spartan_ID'}, inplace=True)
+        return spartan_df.loc[:, ['spartan_ID', 'name']]
+
+    def create_spartan_table(self):
+        spartan_df = self.add_spartan_ids()
+        return spartan_df.loc[:, ['spartan_ID', 'course_ID']]
+
+    def export(self):
+        self.load(self.create_spartan_table(), 'Spartans')
+
+# ins = Spartan()
+# ins.export()
+
 class AcademyCompetency(Spartan):
 
-    """ A class that will create a table for one of the following competencies:
+    """ A class that creates a table for one of the following competencies:
     IH = Intellectual Horsepower
     IS = Interpersonal Savvy
     PV = Perseverance
@@ -431,9 +443,16 @@ class AcademyCompetency(Spartan):
     def create_competency_table(self, competency):
         comp_df = self.extract_competency(competency)
         spartan_df = self.add_spartan_ids()  # returns a df consisting of name, courseId and spartan_id
-        comp_table = pd.merge(comp_df, spartan_df, how='left', on='name')
-        return comp_table.drop(columns=['CourseId', 'name'])
+        comp_table = pd.merge(spartan_df, comp_df, how='right', on='name')
+        return comp_table.drop(columns=['name'])
 
+    def export(self):
+        self.load(self.create_competency_table('IH'), 'Horsepower')
+        self.load(self.create_competency_table('IS'), 'Interpersonal_Savvy')
+        self.load(self.create_competency_table('PV'), 'Perseverance')
+        self.load(self.create_competency_table('PS'), 'Problem_Solving')
+        self.load(self.create_competency_table('SA'), 'Standing_Alone')
+        self.load(self.create_competency_table('SD'), 'Self_Development')
 
 # ins = AcademyCompetency()
-# print(ins.create_competency_table('IS'))
+# print(ins.export())

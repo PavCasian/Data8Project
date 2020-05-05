@@ -58,7 +58,6 @@ CREATE TABLE Candidates (
 	phone VARCHAR(30),
 	university VARCHAR(150),
 	degree VARCHAR(10),
-	course_ID VARCHAR(30),
 	talent_person_ID INT, -- in original is invited_by
 	
 );
@@ -107,7 +106,7 @@ CREATE TABLE Candidate_Weaknesses(
 );
 
 
--- Interview Assesment table
+-- Interview Assessment table
 DROP TABLE IF EXISTS Interview_Assessment
 CREATE TABLE Interview_Assessment (
     candidate_ID INT,
@@ -120,6 +119,12 @@ CREATE TABLE Interview_Assessment (
 	course_type_ID INT,
     academy_ID INT,
     interview_date DATE
+);
+
+DROP TABLE IF EXISTS Spartans
+CREATE TABLE Spartans (
+spartan_ID INT,
+course_ID VARCHAR(10)
 );
 
 -- tables for trainee accessement 

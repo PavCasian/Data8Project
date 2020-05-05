@@ -87,7 +87,6 @@ class ExtractToDF:
             dict_list.append(json_dict_file)
         main_df = pd.DataFrame(dict_list)
         main_df = self.filter_name_col(main_df, 'name').drop_duplicates()
-
         return main_df
 
     # @staticmethod
