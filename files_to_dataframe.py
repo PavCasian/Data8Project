@@ -5,6 +5,8 @@ from FileDictionary import files
 from io import StringIO
 import json
 import re
+from name_workshop_module import Typo
+
 
 class ExtractToDF:
 
@@ -38,6 +40,13 @@ class ExtractToDF:
             df_list.append(df)
         main_df = pd.concat(df_list)
         main_df = self.filter_name_col(main_df, 'name').drop_duplicates()
+        print(main_df[pd.isnull(main_df).any(axis=1)])
+        if self.folder == 'Talent':
+            main_df['invited_by'] = Typo(main_df['invited_by']).replace_typos()  # class for identifying and correcting
+            # typos, returns a pd series
+            main_df = self.filter_name_col(main_df, 'invited_by')
+            print('#####')
+            print(main_df[pd.isnull(main_df).any(axis=1)])
         return main_df
 
     def from_txt(self):
@@ -94,15 +103,19 @@ class ExtractToDF:
         """the values in the name column in one file may not match with the other files' name columns"""
         list_names = []
         for _, name in df[col].iteritems():
-            # eliminate the digits, dots, underscores in the name, make it title case and strip of padding
-            name = re.sub(r'[.;0-9_]+', '', name).title().strip()
-            # we want to capitalise the letter after word patterns such as Mac or Mc
-            name = re.sub(r'\b(Mac|Mc)([a-z])', lambda pat: pat.group(1) + pat.group(2).upper(), name)
-            # Dutch or French name patterns, such as van, de, den, should be lower case if between names
-            name = re.sub(r'(\w\s)(Van(?:\sDer|\sDen)?|De)(\s\w)', lambda pat: pat.group(1) + pat.group(2).lower() +
-                          pat.group(3), name)  # groups are marked by parentheses in the expression
-            # removes spaces between '-': Lester Weddeburn - Scrimgeour
-            name = re.sub("\s*(\W)\s*", r'\1', name)  # \W will match any non-word characters
+            try:
+                # eliminate the digits, dots, underscores in the name, make it title case and strip of padding
+                name = re.sub(r'[.;0-9_]+', '', name).title().strip()
+                # we want to capitalise the letter after word patterns such as Mac or Mc
+                name = re.sub(r'\b(Mac|Mc)([a-z])', lambda pat: pat.group(1) + pat.group(2).upper(), name)
+                # Dutch or French name patterns, such as van, de, den, should be lower case if between names
+                name = re.sub(r'(\w\s)(Van(?:\sDer|\sDen)?|De)(\s\w)', lambda pat: pat.group(1) + pat.group(2).lower() +
+                              pat.group(3), name)  # groups are marked by parentheses in the expression
+                # removes spaces between '-': Lester Weddeburn - Scrimgeour
+                name = re.sub("\s*(\W)\s*", r'\1', name)  # \W will match any non-word characters
+
+            except TypeError:  # nans raise the exception, we still want to add them to the list
+                pass
             list_names.append(name)
         df[col] = list_names
         return df

@@ -17,7 +17,7 @@ def files(bucket, *folders):
     return filenames
 
 
-# for further optimisation check
+# for optimisation check
 # https://stackoverflow.com/questions/27292145/python-boto-list-contents-of-specific-dir-in-bucket
 
 
