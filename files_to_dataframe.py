@@ -40,13 +40,10 @@ class ExtractToDF:
             df_list.append(df)
         main_df = pd.concat(df_list)
         main_df = self.filter_name_col(main_df, 'name').drop_duplicates()
-        print(main_df[pd.isnull(main_df).any(axis=1)])
         if self.folder == 'Talent':
             main_df['invited_by'] = Typo(main_df['invited_by']).replace_typos()  # class for identifying and correcting
             # typos, returns a pd series
             main_df = self.filter_name_col(main_df, 'invited_by')
-            print('#####')
-            print(main_df[pd.isnull(main_df).any(axis=1)])
         return main_df
 
     def from_txt(self):
@@ -124,7 +121,8 @@ class ExtractToDF:
 if __name__ == '__main__':
     test_instance = ExtractToDF('SpartaDays')
     test_csv = test_instance.from_txt()
-    print(test_csv[test_csv['name'].str.contains("-")])
+    # print(test_csv[test_csv['name'].str.contains("-")])
+
     # play = test_csv.assign(name2=lambda x: test_instance.filter_name_col(x.name))
     # play['new']=play.name2.str.findall(r'\s(van|Van)\s')
     # for i in play[['name2', 'new']].itertuples():

@@ -59,7 +59,7 @@ class Typo:
 class SplitName:
 
     def __init__(self):
-        self.split_before_list = ['O', "O'", 'Mc', 'Van', 'Von', 'Di', 'Degli', 'Dell', 'De', 'Le', 'Du', 'St', 'La',
+        self.split_before_list = ['O', "O'", 'Mc', 'van', 'von', 'Di', 'Degli', 'Dell', 'de', 'Le', 'Du', 'St', 'La',
                                   'Ten']
 
     @staticmethod
@@ -73,8 +73,6 @@ class SplitName:
     def split_full_name(self, name_series):  # takes in the name column of a dataframe
         name_list = []
         for row in name_series:  # goes through each row of the file being uploaded
-            row = re.sub(r"\s*(\W)\s*", r"\1", row)  # removes spaces between '-': Lester Weddeburn - Scrimgeour
-            row = re.sub(r"(.)\..*", r"\1", row)  # removes dots Chrisse Santostefano.
             if row.count(' ') > 1:  # if there are more than 2 spaces
                 # if the name contains words from this list split before them
                 splitted_name = row.split(' ')

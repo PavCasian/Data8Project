@@ -19,7 +19,8 @@ class Table:
                                      "DATABASE=SpartaDB;"
                                      "UID=SA;"
                                      "PWD=Passw0rd2018")
-    engine = create_engine("mssql+pyodbc:///?odbc_connect={}".format(params))
+    engine = create_engine("mssql+pyodbc:///?odbc_connect={}".format(params), pool_pre_ping=True)
+    # pool_pre_ping will try to connect to the db 3 times, if doesn't work an exception will be raised
 
     # def __init__(self):
         # self.talent_data = self.extract('Talent')
@@ -165,7 +166,7 @@ class TalentTeam(Table):
     def export(self):
         self.load(self.create_talent_team_table(), 'Talent_Team')
 
-ins = TalentTeam().prepare_talent_team_table()
+# ins = TalentTeam().prepare_talent_team_table()
 # print(ins)
 
 
@@ -196,10 +197,8 @@ class Candidate(Table):
     def create_candidate_table(self):
         recruiter_table = TalentTeam().prepare_talent_team_table()
         df = pd.merge(self.full_name_cand_df, recruiter_table, how='left', on='invited_by')
-        # print(df.head(50))
         df1 = SplitName().split_full_name(df['name'])
         df = pd.concat([df, df1], axis=1)
-        # print(df.head(50))
         df.rename(columns={'dob': 'date_of_birth', 'address': 'candidate_address', 'phone_number': 'phone',
                            'uni': 'university'}, inplace=True)
         return df.loc[:, ['candidate_ID', 'first_name', 'last_name', 'gender', 'email', 'city', 'candidate_address',
@@ -366,7 +365,7 @@ class Spartan(Course, Assessment):
         # into (e.g. 'Hi Romke')
         spartan_df = pd.merge(spartan_df, candidate_df, how='left', on='name')
         spartan_df.rename(columns={'candidate_ID': 'spartan_ID'}, inplace=True)
-        return spartan_df.loc[:, ['spartan_ID', 'name']]
+        return spartan_df.loc[:, ['spartan_ID', 'name', 'course_ID']]
 
     def create_spartan_table(self):
         spartan_df = self.add_spartan_ids()
@@ -375,7 +374,7 @@ class Spartan(Course, Assessment):
     def export(self):
         self.load(self.create_spartan_table(), 'Spartans')
 
-# ins = Spartan()
+# ins = Spartan().add_spartan_ids()
 # ins.export()
 
 class AcademyCompetency(Spartan):
@@ -408,7 +407,7 @@ class AcademyCompetency(Spartan):
         comp_df = self.extract_competency(competency)
         spartan_df = self.add_spartan_ids()  # returns a df consisting of name, courseId and spartan_id
         comp_table = pd.merge(spartan_df, comp_df, how='right', on='name')
-        return comp_table.drop(columns=['name'])
+        return comp_table.drop(columns=['name', 'course_ID'])
 
     def export(self):
         self.load(self.create_competency_table('IH'), 'Horsepower')
