@@ -92,7 +92,7 @@ class ExtractToDF:
             json_dict_file = json.loads(bson_dict_file)
             dict_list.append(json_dict_file)
         main_df = pd.DataFrame(dict_list)
-        main_df = self.filter_name_col(main_df, 'name').drop_duplicates()
+        main_df = self.filter_name_col(main_df, 'name')
         return main_df
 
     # @staticmethod
@@ -119,28 +119,25 @@ class ExtractToDF:
 
 
 if __name__ == '__main__':
-    test_instance = ExtractToDF('SpartaDays')
-    test_csv = test_instance.from_txt()
-    # print(test_csv[test_csv['name'].str.contains("-")])
+    import numpy as np
 
-    # play = test_csv.assign(name2=lambda x: test_instance.filter_name_col(x.name))
-    # play['new']=play.name2.str.findall(r'\s(van|Van)\s')
-    # for i in play[['name2', 'new']].itertuples():
-    #     if len(i[2]) > 0:
-    #         print(i)
+    # test_instance = ExtractToDF('json_class_testing')
+    # test = test_instance.from_json()
+    # # print(type(test_csv.loc[0, 'weaknesses']))
+    # print({col: np.repeat(test[col].values,
+    #                       test['strengths'].str.len())
+    #        for col in test.columns.drop('strengths')})
+    #
+    # print()
+    # print(np.concatenate(test['strengths'].values))
+    df = pd.DataFrame({'name': ['Okja', 'Pav', 'Felix'],
+                       'tech': [['Java', 'Python'], [], ['Python', 'clojure']]})
 
+    # print(df.tech.str.len())
+    # print(df.values)
+    print(np.repeat(df.name.values, df.tech.str.len()))
+    print(np.concatenate(df.tech.values))
 
-    # text_instance = ExtractToDF('SpartaDays')
-    # test_text = text_instance.from_txt()
-    # test_text.to_csv('sparta_days.csv')
-    # string = 'Marie-ann Harvard'
-    # print(string.title())
-    # string = 'fhjggg Sergio Van Der Stumberg jfkfkklf Van Der Man Vab'
-    # pattern = re.compile(r'(Van|De|Den|Der)\s\w')
-    # matches = pattern.finditer(string)
-    # name = re.sub(r'(\w\s)(Van\s(Der|Den)?|De)(\s\w)', lambda pat: pat.group(1) + pat.group(2).lower() +
-    #                                                                   pat.group(4), string)  #
-    # print(name)
-    # # for match in matches:
-    # #     print(match.group(1).lower())
+    new_df = pd.DataFrame({'name': np.repeat(df.name.values, df.tech.str.len())}).assign(**{'tech': np.concatenate(df.tech.values)})
+    print(new_df)
 

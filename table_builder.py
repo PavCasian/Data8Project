@@ -19,8 +19,7 @@ class Table:
                                      "DATABASE=SpartaDB;"
                                      "UID=SA;"
                                      "PWD=Passw0rd2018")
-    engine = create_engine("mssql+pyodbc:///?odbc_connect={}".format(params), pool_pre_ping=True)
-    # pool_pre_ping will try to connect to the db 3 times, if doesn't work an exception will be raised
+    engine = create_engine("mssql+pyodbc:///?odbc_connect={}".format(params))
 
     # def __init__(self):
         # self.talent_data = self.extract('Talent')
@@ -36,7 +35,7 @@ class Table:
             elif file_type == 'txt':
                 df = extraction_instance.from_txt()
             elif file_type == 'json':
-                df = extraction_instance.from_txt()
+                df = extraction_instance.from_json()
             return df
         except ValueError:
             print('The file_type parameter does not match the type of the file')
@@ -125,7 +124,7 @@ class Course(Table):
                                SplitName().split_full_name(trainer_df['trainer'])], axis=1)
         return trainer_df  # [trainer_ID, first_name, last_name]
 
-    def export(self):
+    def export_course(self):
         self.load(self.create_courses_table(), 'Courses')
         self.load(self.create_trainer_table(), 'Trainers')
         self.load(self.create_course_types_table(), 'Course_Types')
@@ -163,7 +162,7 @@ class TalentTeam(Table):
                                   SplitName().split_full_name(recruiter_df['invited_by'])], axis=1)
         return recruiter_df  # [talent_person_ID, first_name,   last_name]
 
-    def export(self):
+    def export_talent_team(self):
         self.load(self.create_talent_team_table(), 'Talent_Team')
 
 # ins = TalentTeam().prepare_talent_team_table()
@@ -204,13 +203,12 @@ class Candidate(Table):
         return df.loc[:, ['candidate_ID', 'first_name', 'last_name', 'gender', 'email', 'city', 'candidate_address',
                           'postcode', 'phone', 'university', 'degree', 'talent_person_ID']]
 
-    def export(self):
+    def export_candidate(self):
         self.load(self.create_candidate_table(), 'Candidates')
 
 
 # df = Candidate().create_candidate_table()
-# print(time.perf_counter())
-# Candidate().export()
+# Candidate().export()# print(time.perf_counter())
 # print(time.perf_counter())
 
 class Assessment(Candidate):
@@ -221,11 +219,11 @@ class Assessment(Candidate):
         self.interview_df = self.prepare_assessment_table()
 
     def prepare_assessment_table(self):
-        interview_df = self.extract('TransformedFiles') # replace with extract from json folder
+        interview_df = self.extract('Interview Notes', file_type='json')
         # to merge on date, both columns in the merging dfs need to be of the same type
         interview_df['date'] = pd.to_datetime(interview_df['date'], format="%d/%m/%Y")
         # interview_df has duplicates, same name and interview date,however strengths/weak/techs differ so will remove
-        # duplicates based on the 'name' and 'date' column. It's highly unlikely to have same name on the same date
+        # duplicates based on the 'name' and 'date' column. It's unlikely to have same name on the same date
         interview_df.drop_duplicates(subset=['name', 'date'], inplace=True)
         # Will merge SpartaDays and Interview Notes as both include candidate assessment. Note that there are some
         # candidates in the sparta_day_df which are not in the interview_notes files, hence outer join used
@@ -258,7 +256,7 @@ class Assessment(Candidate):
         df = self.add_ids_col(df, 'academy_ID')
         return df[['academy_ID', 'academy_name']]
 
-    def export(self):
+    def export_assessment(self):
         self.load(self.create_interview_assessment_table(), 'Interview_Assessment')
         self.load(self.create_academy_table(), 'Academies')
 
@@ -319,19 +317,20 @@ class StrengthWeaknessTechnology(Assessment):
 
     def unpack_characteristic(self):
         # creating a copy of relevant info from interview_df
-        interview_df_with_cand_ids = self.interview_df.loc[:, ['candidate_ID', 'strengths', 'weaknesses', 'technologies']]
+        interview_df = self.interview_df.loc[:, ['candidate_ID', 'strengths', 'weaknesses', 'technologies']]
         # each candidate has str list for strengths/weaknesses e.g. '['Intolerant', 'Impulsive']' and list of dicts for
         # technologies [{'language': 'PHP', 'self_score': 4}, {'language': 'Python', 'self_score': 4}]
-        # Few rows include nan, which cannt be parse by literal_eval, which removes the string quotes of the list, so we
-        # replace nan with '[]' for consistency
-        interview_df_with_cand_ids[self.from_column] = interview_df_with_cand_ids[self.from_column].fillna('[]').apply(ast.literal_eval)
-        # take each column in df, except from_column, and repeat each row based on the number of list items in the
+        # Nan values in the from_column are transformed to empty list for consistency
+        interview_df[self.from_column].loc[interview_df[self.from_column].isnull()] = \
+            interview_df[self.from_column].loc[interview_df[self.from_column].isnull()].apply(lambda x: [])
+
+        # take each column in df, except from_column, and repeat each value based on the number of list items in the
         # from_column row; to this assign the corresponding from_column values which were flatten (into a single list)
-        self.unpacked_df = pd.DataFrame({col: np.repeat(interview_df_with_cand_ids[col].values,
-                                                        interview_df_with_cand_ids[self.from_column].str.len())
-                                        for col in interview_df_with_cand_ids.columns.drop(self.from_column)}
+        self.unpacked_df = pd.DataFrame({col: np.repeat(interview_df[col].values,
+                                                        interview_df[self.from_column].str.len())
+                                        for col in interview_df.columns.drop(self.from_column)}
                                         ).assign(**{self.from_column:
-                                                    np.concatenate(interview_df_with_cand_ids[self.from_column].values)})
+                                                    np.concatenate(interview_df[self.from_column].values)})
         # now for technologies, each row contains one dict, we need to split each dictionary into 2 columns
         # (e.g. 'language' and 'self-score')
         if self.from_column == 'technologies':
@@ -339,7 +338,7 @@ class StrengthWeaknessTechnology(Assessment):
                                          self.unpacked_df['technologies'].apply(pd.Series)], axis=1)
             self.from_column = 'language'  # for use in create_characteristic table as 'technologies' is not valid more
 
-    def export(self):
+    def export_strength_weakness_technology(self):
         self.load(self.create_characteristic_candidate_table('strengths'), 'Candidate_Strengths')
         self.load(self.create_characteristic_table('strengths'), 'Strengths')
         self.load(self.create_characteristic_candidate_table('weaknesses'), 'Candidate_Weaknesses')
@@ -347,10 +346,11 @@ class StrengthWeaknessTechnology(Assessment):
         self.load(self.create_characteristic_candidate_table('technologies'), 'Candidate_Technologies')
         self.load(self.create_characteristic_table('technologies'), 'Technologies')
 
-# print(StrengthWeaknessTechnology().export())
+
+print(StrengthWeaknessTechnology().create_characteristic_candidate_table('strengths'))
 
 
-class Spartan(Course, Assessment):
+class Spartan(Course, StrengthWeaknessTechnology):
 
     def __init__(self):
         super().__init__()
@@ -371,7 +371,7 @@ class Spartan(Course, Assessment):
         spartan_df = self.add_spartan_ids()
         return spartan_df.loc[:, ['spartan_ID', 'course_ID']]
 
-    def export(self):
+    def export_spartan(self):
         self.load(self.create_spartan_table(), 'Spartans')
 
 # ins = Spartan().add_spartan_ids()
@@ -409,7 +409,7 @@ class AcademyCompetency(Spartan):
         comp_table = pd.merge(spartan_df, comp_df, how='right', on='name')
         return comp_table.drop(columns=['name', 'course_ID'])
 
-    def export(self):
+    def export_academy_competency(self):
         self.load(self.create_competency_table('IH'), 'Horsepower')
         self.load(self.create_competency_table('IS'), 'Interpersonal_Savvy')
         self.load(self.create_competency_table('PV'), 'Perseverance')
