@@ -219,7 +219,7 @@ class Assessment(Candidate):
         self.interview_df = self.prepare_assessment_table()
 
     def prepare_assessment_table(self):
-        interview_df = self.extract('Interview Notes', file_type='json')
+        interview_df = self.extract('Interview Notes', file_type='json')  # 'json_class_testing'
         # to merge on date, both columns in the merging dfs need to be of the same type
         interview_df['date'] = pd.to_datetime(interview_df['date'], format="%d/%m/%Y")
         # interview_df has duplicates, same name and interview date,however strengths/weak/techs differ so will remove
@@ -266,9 +266,39 @@ class Assessment(Candidate):
 
 class StrengthWeaknessTechnology(Assessment):
 
-    """Creates the following tables:
+    """
+    The object makes use of the interview_df, more exactly columns ('candidate_ID', 'strengths'/'weaknesses'/
+    'technologies') from its Assessment superclass which includes the data from the Interview
+    Notes files.
+    Creates the following tables:
         Strengths, Weaknesses, Technologies, Candidate_Strengths, Candidate_Weaknesses, Candidate_Technologies
-        Load them all in the sql database by calling the export function.
+
+
+    Note that the term 'characteristics' in this class refers to either strengths, weaknesses or technologies.
+
+    Functions:
+
+        unpack_characteristics: each row (i.e. candidate) contains the strengths/weaknesses values as a list
+            e.g. ['Intolerant', 'Impulsive'] and list of dicts for technologies [{'language': 'PHP', 'self_score': 4},
+            {'language': 'Python', 'self_score': 4}]. This function unpacks the list and repeats each row in interview_df
+            according to the number of items in the characteristic column for the respective row. Those with nan values
+            are not included in the output.
+                Output: updates the self.unpacked_df(), which will include unpacked versions of candidate_ID and
+                    characteristic column
+
+        create_characteristic_table: creates one table with unique characteristic names and generates ids for them
+                Args: characteristic_col ('strengths', 'weaknesses' or 'technologies') - indicates which table to create
+
+        create_candidate_characteristic_table: merges the unpacked_df with create_characteristic_table to replace the
+            characteristic name with its id.
+                Args: characteristic_col ('strengths', 'weaknesses' or 'technologies') - indicates which table to create
+
+        specify_col_names: to enable the same class instance to create all 3 types of tables, the specific column names
+            (name column, id column, and the extraction column) need to be updated.
+                Arg: characteristic_col
+                Output: updates the class attributes: from_column, col_name, col_id
+
+        export_strength_weakness_technology: Loads all the tables in the sql database
 
     """
     def __init__(self):
@@ -304,7 +334,7 @@ class StrengthWeaknessTechnology(Assessment):
             self.col_name = 'technology_name'
             self.col_id = 'technology_ID'
 
-    def create_characteristic_table(self, characteristic_col):  # pull all characteristic from_column in a df
+    def create_characteristic_table(self, characteristic_col):  # pull all characteristics from_column in a df
         self.specify_col_names(characteristic_col)  # although the right column names were specified in the create_
         # _candidate_characteristic_table() already, specifying again makes the current function independent of the
         # order functions are called
@@ -316,23 +346,21 @@ class StrengthWeaknessTechnology(Assessment):
         return characteristic_df  # characteristic name and its ID
 
     def unpack_characteristic(self):
-        # creating a copy of relevant info from interview_df
-        interview_df = self.interview_df.loc[:, ['candidate_ID', 'strengths', 'weaknesses', 'technologies']]
-        # each candidate has str list for strengths/weaknesses e.g. '['Intolerant', 'Impulsive']' and list of dicts for
-        # technologies [{'language': 'PHP', 'self_score': 4}, {'language': 'Python', 'self_score': 4}]
+        # relevant info from interview_df
+        interview_df = self.interview_df.loc[:, ('candidate_ID', self.from_column)]
         # Nan values in the from_column are transformed to empty list for consistency
-        interview_df[self.from_column].loc[interview_df[self.from_column].isnull()] = \
-            interview_df[self.from_column].loc[interview_df[self.from_column].isnull()].apply(lambda x: [])
-
-        # take each column in df, except from_column, and repeat each value based on the number of list items in the
-        # from_column row; to this assign the corresponding from_column values which were flatten (into a single list)
+        main_column = interview_df.loc[:, self.from_column].copy()  # to avoid SettingWithCopy warning
+        main_column[main_column.isnull()] = main_column[main_column.isnull()].apply(lambda x: [])
+        interview_df.loc[:, self.from_column] = main_column
+        # take each column in df,except from_column,and repeat each value based on the respective nr of list items
+        # in the from_column;to this assign the corresponding from_column values which were flatten (into a single list)
         self.unpacked_df = pd.DataFrame({col: np.repeat(interview_df[col].values,
                                                         interview_df[self.from_column].str.len())
                                         for col in interview_df.columns.drop(self.from_column)}
                                         ).assign(**{self.from_column:
                                                     np.concatenate(interview_df[self.from_column].values)})
         # now for technologies, each row contains one dict, we need to split each dictionary into 2 columns
-        # (e.g. 'language' and 'self-score')
+        # (i.e. 'language' and 'self-score')
         if self.from_column == 'technologies':
             self.unpacked_df = pd.concat([self.unpacked_df.drop(['technologies'], axis=1),
                                          self.unpacked_df['technologies'].apply(pd.Series)], axis=1)
@@ -347,7 +375,7 @@ class StrengthWeaknessTechnology(Assessment):
         self.load(self.create_characteristic_table('technologies'), 'Technologies')
 
 
-print(StrengthWeaknessTechnology().create_characteristic_candidate_table('strengths'))
+# print(StrengthWeaknessTechnology().create_characteristic_candidate_table('strengths'))
 
 
 class Spartan(Course, StrengthWeaknessTechnology):

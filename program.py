@@ -1,8 +1,10 @@
 from table_builder import *
+from sql_table_builder import create_sql_tables
 import time
 
+create_sql_tables()
 # it takes 286 seconds to load without loading directly the json files
-print('Before class instantiating: ', time.perf_counter())
+print('Before class instantiatinon: ', time.perf_counter())
 academy_competency_inst = AcademyCompetency()
 print('Before academy_competency export: ', time.perf_counter())
 academy_competency_inst.export_academy_competency()
