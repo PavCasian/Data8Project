@@ -9,9 +9,10 @@ def create_sql_tables():
     # saved but others not if a connection problem occurs during the transaction
 
     cursor = cnxn.cursor()
+    cursor.execute("DROP DATABASE IF EXISTS SpartaDB;"
+                   "CREATE DATABASE SpartaDB;")  # When in the same transaction with USE SpartaDB, cannot identify db
+
     cursor.execute("""
-    DROP DATABASE IF EXISTS SpartaDB;
-    CREATE DATABASE SpartaDB;
     USE SpartaDB;
     
     -- Academies table

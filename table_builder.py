@@ -12,6 +12,7 @@ import urllib
 import re
 import time
 
+
 class Table:
 
     params = urllib.parse.quote_plus("DRIVER={SQL Server Native Client 11.0};"
@@ -19,13 +20,7 @@ class Table:
                                      "DATABASE=SpartaDB;"
                                      "UID=SA;"
                                      "PWD=Passw0rd2018")
-    engine = create_engine("mssql+pyodbc:///?odbc_connect={}".format(params))
-
-    # def __init__(self):
-        # self.talent_data = self.extract('Talent')
-        # self.interview_data = self.extract('Interview Notes', file_type='json')
-        # self.sparta_day_data = self.extract('SpartaDays', file_type='txt')
-        # self.academy_data = self.extract('Academy')
+    engine = create_engine("mssql+pyodbc:///?odbc_connect={}".format(params), pool_pre_ping=True)
 
     def extract(self, folder, file_type='csv'):
         extraction_instance = ExtractToDF(folder)
@@ -41,7 +36,8 @@ class Table:
             print('The file_type parameter does not match the type of the file')
             sys.exit(1)  # will stop the program if exception raised
 
-    def add_ids_col(self, df, column_name):
+    @staticmethod
+    def add_ids_col(df, column_name):
         return df.assign(**{column_name: np.arange(1, len(df) + 1)})  # ids start from 1
 
     def load(self, df, sql_table_name):
@@ -102,7 +98,7 @@ class Course(Table):
 
     def create_course_types_table(self):
         course_type_df = self.courses_df[['course_name']].drop_duplicates()
-        course_type_df = self.add_ids_col(course_type_df, 'course_type_ID')
+        course_type_df = Table.add_ids_col(course_type_df, 'course_type_ID')
         return course_type_df[['course_type_ID', 'course_name']]
 
     def create_courses_table(self):
@@ -114,7 +110,7 @@ class Course(Table):
     def get_trainer(self):  # trainer_ID with full name
         trainer_df = self.courses_df[['trainer']]
         df = trainer_df.drop_duplicates()
-        df = self.add_ids_col(df, 'trainer_ID')
+        df = Table.add_ids_col(df, 'trainer_ID')
         return df
 
     def create_trainer_table(self):
@@ -146,11 +142,11 @@ class TalentTeam(Table):
         super().__init__()
 
     def prepare_talent_team_table(self):
-        """ Returns a table with unique full names, without typos, of recruiters column (i.e. 'invited_by)"""
+        """ Returns a table with unique full names, without typos, of talent_team_person column (i.e. 'invited_by)"""
         talent_data = self.extract('Talent', file_type='csv')
         recruiter = talent_data['invited_by']  # recruiter full name column
         recruiter_df = recruiter.dropna().drop_duplicates().to_frame()
-        recruiter_df = self.add_ids_col(recruiter_df, 'talent_person_ID')
+        recruiter_df = Table.add_ids_col(recruiter_df, 'talent_person_ID')
         return recruiter_df  # [invited_by, talent_person_ID]
 
     def create_talent_team_table(self):
@@ -190,7 +186,7 @@ class Candidate(Table):
                                               errors='coerce')  # format='%d %B %Y'  &  '%d %b %Y'
         df.drop(['id'], axis=1, inplace=True)  # in each file in 'Talent' indexing starts from 0
         df.drop_duplicates(inplace=True)
-        df = self.add_ids_col(df, 'candidate_ID')
+        df = Table.add_ids_col(df, 'candidate_ID')
         return df
 
     def create_candidate_table(self):
@@ -208,7 +204,7 @@ class Candidate(Table):
 
 
 # df = Candidate().create_candidate_table()
-# Candidate().export()# print(time.perf_counter())
+# Candidate().export_candidate()# print(time.perf_counter())
 # print(time.perf_counter())
 
 class Assessment(Candidate):
@@ -253,7 +249,7 @@ class Assessment(Candidate):
     def create_academy_table(self):
         df = self.sparta_day_df[['academy_name']]
         df = df.drop_duplicates()
-        df = self.add_ids_col(df, 'academy_ID')
+        df = Table.add_ids_col(df, 'academy_ID')
         return df[['academy_ID', 'academy_name']]
 
     def export_assessment(self):
@@ -342,7 +338,7 @@ class StrengthWeaknessTechnology(Assessment):
         characteristic_df = self.unpacked_df.loc[:, [self.from_column]]
         characteristic_df = characteristic_df.drop_duplicates()  # returns a series of unique values
         characteristic_df.rename(columns={self.from_column: self.col_name}, inplace=True)
-        characteristic_df = self.add_ids_col(characteristic_df, self.col_id)
+        characteristic_df = Table.add_ids_col(characteristic_df, self.col_id)
         return characteristic_df  # characteristic name and its ID
 
     def unpack_characteristic(self):

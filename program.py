@@ -3,8 +3,8 @@ from sql_table_builder import create_sql_tables
 import time
 
 create_sql_tables()
-# it takes 286 seconds to load without loading directly the json files
-print('Before class instantiatinon: ', time.perf_counter())
+# it takes circa 286 seconds to load without loading directly the json files
+print('Before class instantiation: ', time.perf_counter())
 academy_competency_inst = AcademyCompetency()
 print('Before academy_competency export: ', time.perf_counter())
 academy_competency_inst.export_academy_competency()
@@ -14,8 +14,12 @@ print('Before strengthweakness export: ', time.perf_counter())
 academy_competency_inst.export_strength_weakness_technology()
 print('Before assessment export: ', time.perf_counter())
 academy_competency_inst.export_assessment()
-print('Before candidate export: ', time.perf_counter())
-academy_competency_inst.export_candidate()
+
+time.sleep(20)
+
+# print('Before candidate export: ', time.perf_counter())
+# academy_competency_inst.export_candidate()
+
 print('Before course export: ', time.perf_counter())
 academy_competency_inst.export_course()
 print('Before TalentTeam export: ', time.perf_counter())
