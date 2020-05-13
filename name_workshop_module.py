@@ -60,7 +60,7 @@ class SplitName:
 
     def __init__(self):
         self.split_before_list = ['O', "O'", 'Mc', 'van', 'von', 'Di', 'Degli', 'Dell', 'de', 'Le', 'Du', 'St', 'La',
-                                  'Ten']
+                                  'Ten']  # split before name patterns
 
     @staticmethod
     def common_item(a, b):
@@ -91,8 +91,3 @@ class SplitName:
         namedf.columns =['first_name', 'last_name']
         return namedf  # returns a dataframe of first and last name
 
-
-if __name__ == '__main__':
-    extraction_instance = ExtractToDF('Talent')
-    df = extraction_instance.from_csv()
-    print(SplitName().split_full_name(df['name']))

@@ -1,6 +1,6 @@
 import boto3
 
-def files(bucket, *folders):
+def get_file_names(bucket, *folders):
     s3 = boto3.resource('s3')
     data_bucket = s3.Bucket(bucket)
     contents = data_bucket.objects.all()

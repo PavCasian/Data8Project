@@ -1,10 +1,10 @@
-from files_to_dataframe import ExtractToDF
+from extraction_mod import ExtractToDF
 import pandas as pd
 import numpy as np
 import sys
 import ast
 import boto3 # delete later
-from FileDictionary import files
+from FileDictionary import get_file_names
 from datetime import datetime
 from name_workshop_module import SplitName, Typo
 from sqlalchemy import create_engine
@@ -48,6 +48,8 @@ class Table:
 
 class Course(Table):
 
+    """Creates Courses, Trainers and Course_Types tables"""
+
     def __init__(self):
         self.folder = 'Academy'
         self.courses_df, self.spartans_df = self.get_course_details()
@@ -55,7 +57,7 @@ class Course(Table):
 
     def get_course_details(self):
         s3_client = boto3.client('s3')
-        file_names = files('data8-engineering-project', self.folder)
+        file_names = get_file_names('data8-engineering-project', self.folder)
         courses_list = []
         spartans_list = []
         for file_name in file_names[self.folder]:  # file_name ex 'Business_25_2019-03-04.csv'
@@ -127,45 +129,11 @@ class Course(Table):
 
 # ins = Course().create_trainer_table()
 # ins.export()
-# print(ins.create_courses_table().info())
-
-# df = ins.get_course_details()
-# print(df[0].head(10))
-# print(df[0].info())
-# print(df[1].head(10))
-# print(df[1].info())
-
-
-class TalentTeam(Table):
-
-    def __init__(self):
-        super().__init__()
-
-    def prepare_talent_team_table(self):
-        """ Returns a table with unique full names, without typos, of talent_team_person column (i.e. 'invited_by)"""
-        talent_data = self.extract('Talent', file_type='csv')
-        recruiter = talent_data['invited_by']  # recruiter full name column
-        recruiter_df = recruiter.dropna().drop_duplicates().to_frame()
-        recruiter_df = Table.add_ids_col(recruiter_df, 'talent_person_ID')
-        return recruiter_df  # [invited_by, talent_person_ID]
-
-    def create_talent_team_table(self):
-        recruiter_df = self.prepare_talent_team_table().reset_index()  # without resetting, concatenation will produce
-        # a df with number of rows =nr of indices of prev 2 dfs, because some indices are present only in one df, those
-        # rows will contain nans
-        # We want the talent_person_ID and their name to be separated into first and last name
-        recruiter_df = pd.concat([recruiter_df['talent_person_ID'],
-                                  SplitName().split_full_name(recruiter_df['invited_by'])], axis=1)
-        return recruiter_df  # [talent_person_ID, first_name,   last_name]
-
-    def export_talent_team(self):
-        self.load(self.create_talent_team_table(), 'Talent_Team')
-
-# ins = TalentTeam().prepare_talent_team_table()
-# print(ins)
 
 
 class Candidate(Table):
+
+    """Creates Candidates and Talent_Team tables"""
 
     def __init__(self):
         super().__init__()
@@ -189,25 +157,43 @@ class Candidate(Table):
         df = Table.add_ids_col(df, 'candidate_ID')
         return df
 
+    def prepare_talent_team_table(self):
+        """ Returns a table with unique full names, without typos, of talent_team_person column (i.e. 'invited_by)"""
+        recruiter = self.full_name_cand_df['invited_by'].copy()  # recruiter full name column
+        recruiter_df = recruiter.dropna().drop_duplicates().to_frame()
+        recruiter_df = Table.add_ids_col(recruiter_df, 'talent_person_ID')
+        return recruiter_df  # [invited_by, talent_person_ID]
+
+    def create_talent_team_table(self):
+        recruiter_df = self.prepare_talent_team_table().reset_index()  # without resetting, concatenation will produce
+        # a df with number of rows =nr of indices of prev 2 dfs, because some indices are present only in one df, those
+        # rows will contain nans
+        # We want the talent_person_ID and their name to be separated into first and last name
+        recruiter_df = pd.concat([recruiter_df['talent_person_ID'],
+                                  SplitName().split_full_name(recruiter_df['invited_by'])], axis=1)
+        return recruiter_df  # [talent_person_ID, first_name,   last_name]
+
     def create_candidate_table(self):
-        recruiter_table = TalentTeam().prepare_talent_team_table()
+        recruiter_table = self.prepare_talent_team_table()
         df = pd.merge(self.full_name_cand_df, recruiter_table, how='left', on='invited_by')
         df1 = SplitName().split_full_name(df['name'])
         df = pd.concat([df, df1], axis=1)
         df.rename(columns={'dob': 'date_of_birth', 'address': 'candidate_address', 'phone_number': 'phone',
                            'uni': 'university'}, inplace=True)
-        return df.loc[:, ['candidate_ID', 'first_name', 'last_name', 'gender', 'email', 'city', 'candidate_address',
-                          'postcode', 'phone', 'university', 'degree', 'talent_person_ID']]
+        return df.loc[:, ['candidate_ID', 'first_name', 'last_name', 'gender', 'date_of_birth', 'email', 'city',
+                          'candidate_address', 'postcode', 'phone', 'university', 'degree', 'talent_person_ID']]
 
     def export_candidate(self):
         self.load(self.create_candidate_table(), 'Candidates')
+        self.load(self.create_talent_team_table(), 'Talent_Team')
 
 
-# df = Candidate().create_candidate_table()
-# Candidate().export_candidate()# print(time.perf_counter())
-# print(time.perf_counter())
+# Candidate().export_candidate()
+
 
 class Assessment(Candidate):
+
+    """Creates Interview_Assessment and Academies tables"""
 
     def __init__(self):
         super().__init__()
@@ -376,6 +362,8 @@ class StrengthWeaknessTechnology(Assessment):
 
 class Spartan(Course, StrengthWeaknessTechnology):
 
+    """Creates Spartans table"""
+
     def __init__(self):
         super().__init__()
 
@@ -403,13 +391,13 @@ class Spartan(Course, StrengthWeaknessTechnology):
 
 class AcademyCompetency(Spartan):
 
-    """ A class that creates a table for one of the following competencies:
-    IH = Intellectual Horsepower
-    IS = Interpersonal Savvy
+    """ A class that creates a table for each of the following competencies:
+    IH = Intellectual Horsepower (Horsepower table)
+    IS = Interpersonal_Savvy
     PV = Perseverance
-    PS = Problem Solving
-    SD = Self Development
-    SA = Standing Alone
+    PS = Problem_Solving
+    SD = Self_Development
+    SA = Standing_Alone
     It will return a pandas dataframe containing the spartans_id and their performance on one of the above for each
     week in the course.
     """

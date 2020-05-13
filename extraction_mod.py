@@ -1,7 +1,7 @@
 import boto3
 import pandas as pd
 from datetime import datetime
-from FileDictionary import files
+from FileDictionary import get_file_names
 from io import StringIO
 import json
 import re
@@ -27,7 +27,7 @@ class ExtractToDF:
     def __init__(self, folder):
         self.folder = folder
         self.bucket = 'data8-engineering-project'
-        self.file_names_dict = files(self.bucket, folder)
+        self.file_names_dict = get_file_names(self.bucket, folder)
         self.s3_client = boto3.client('s3')
 
     def from_csv(self):
@@ -116,28 +116,4 @@ class ExtractToDF:
             list_names.append(name)
         df[col] = list_names
         return df
-
-
-if __name__ == '__main__':
-    import numpy as np
-
-    # test_instance = ExtractToDF('json_class_testing')
-    # test = test_instance.from_json()
-    # # print(type(test_csv.loc[0, 'weaknesses']))
-    # print({col: np.repeat(test[col].values,
-    #                       test['strengths'].str.len())
-    #        for col in test.columns.drop('strengths')})
-    #
-    # print()
-    # print(np.concatenate(test['strengths'].values))
-    df = pd.DataFrame({'name': ['Okja', 'Pav', 'Felix'],
-                       'tech': [['Java', 'Python'], [], ['Python', 'clojure']]})
-
-    # print(df.tech.str.len())
-    # print(df.values)
-    print(np.repeat(df.name.values, df.tech.str.len()))
-    print(np.concatenate(df.tech.values))
-
-    new_df = pd.DataFrame({'name': np.repeat(df.name.values, df.tech.str.len())}).assign(**{'tech': np.concatenate(df.tech.values)})
-    print(new_df)
 
