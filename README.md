@@ -1,14 +1,14 @@
 Run 'program.py' to do all the job.
 
-######Data: 
-Personal information, interview performance and behavioural compentency indices (in-course information) of candidates that applied for different courses at a training provider company. It's stored in four AWS S3 cloud: Talent, SpartaDays, Interview Notes, Academy.
+###### Data: 
+Personal information, interview performance and behavioural compentencies indices (during the course) of candidates that applied for different courses at a training provider company. Data is stored in four AWS S3 folders: Talent, SpartaDays, Interview Notes, Academy.
 
-######Task: 
-Link candidate data from different files so that a candidate can be easily traced from the beginning of the recruitment process to the end of the course. All the data needs to be metamorphosed into normalised tables in a Microsoft SQL Server Database(MSSD).
+###### Task: 
+Link candidate data from different files so that a candidate can be easily traced from the beginning of the recruitment process to the end of the course. All the data needs to be loaded into normalised tables in Microsoft SQL Server(MSS).
 
-######Challenges:
- - Need to link different types of data
- - The files are of different formats: json, csv and text files
+###### Challenges:
+ - Link different types of data
+ - Files vary in format: json, csv and text files
  - The same name can be written differently across files, for example: 
        (Matt Smith and MATT SMITH;
        Matt von Smith and Matt Von Smith;
@@ -16,14 +16,14 @@ Link candidate data from different files so that a candidate can be easily trace
  - Duplicates of candidate name and interview date but different interview information (e.g. skills)
  - Some names have typos
  
-######Approach:
+###### Approach:
  - Create 20 tables to meet the normalisation requirement (see the ERD file for the specifics).
  - Use the boto3 Python library for extraction from S3
  - Clean the data of typos, duplicates and other inconsistencies
- - To link data use Pandas dataframes to merge the data
+ - To link data, populate data into Pandas dataframes and use the 'merge' method.
  - Once data is ready, load efficiently into MSSD with the sqlalchemy library
 
-Additional notes:
+##### The new version of the project:
  - The approach taken here is to use class inheritance in order to reduce the number of requests to S3. Consequently,
    this reduces the number of times the data needs to be transformed after extraction. Classes roughly mimic each s3
    folder topics. Note that one class can create and export multiple tables. Most of the classes inherit from each other,
